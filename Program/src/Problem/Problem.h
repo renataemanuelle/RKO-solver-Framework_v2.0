@@ -111,6 +111,12 @@ struct DecodedSolution
     double objective_value;             // por enquanto, soma dos score_scenario
 };
 
+struct Interval
+{
+    long long start; // epoch seconds
+    long long end;   // epoch seconds
+};
+
 struct Vec3
 {
     double x, y, z;
@@ -120,6 +126,7 @@ static constexpr double PI = 3.14159265358979323846;
 
 //-------------------------- AUXILIARY FUNCTIONS FOR PROBLEM SOLUTION --------------------------
 
+// Converte graus para radianos
 static inline double deg2rad(double deg)
 {
     return deg * PI / 180.0;
@@ -188,25 +195,25 @@ static Vec3 cart_system(double lat_deg, double lon_deg, double elevation_km)
     };
 }
 
+// Subtrai dois vetores
 static inline Vec3 subtract(const Vec3& a, const Vec3& b)
 {
     return {a.x - b.x, a.y - b.y, a.z - b.z};
 }
 
+// Calcula o produto escalar de dois vetores
 static inline double dot(const Vec3& a, const Vec3& b)
 {
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
+// Calcula a norma de um vetor
 static inline double norm(const Vec3& v)
 {
     return std::sqrt(dot(v, v));
 }
 
-/************************************************************************************
- Method: parse_time_to_epoch_seconds
- Description: parse a time string into epoch seconds (for interval overlap checking)
-*************************************************************************************/
+// Converte uma string de tempo para segundos desde a época (epoch)
 static long long parse_time_to_epoch_seconds(const std::string& time_str)
 {
     std::tm tm = {};
@@ -316,7 +323,7 @@ static bool can_insert_by_maneuver(
     return true;
 }
 
-
+// Insere uma aquisição na lista ordenada por tempo
 static void insert_sorted_by_time(
     std::vector<int>& selected_idxs,
     int cand_idx,
@@ -340,6 +347,7 @@ static void insert_sorted_by_time(
     selected_idxs.insert(selected_idxs.begin() + pos, cand_idx);
 }
 
+// Decodifica uma solução random-key para uma solução do problema
 static DecodedSolution decode_solution(
     const TSol& s,
     const TProblemData& data)
@@ -378,36 +386,6 @@ static DecodedSolution decode_solution(
     return out;
 }
 
-// /************************************************************************************
-//  Method: parse_time_to_epoch_seconds
-//  Description: parse a time string into epoch seconds (for interval overlap checking)
-// *************************************************************************************/
-// static long long parse_time_to_epoch_seconds(const std::string& t)
-// {
-//     // Formato esperado: "2025-11-21 10:12:20"
-//     std::tm tm{};
-//     std::istringstream ss(t);
-//     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
-//     if (ss.fail())
-//         return -1;
-
-//     // mktime interpreta tm como horário local; como estamos só comparando intervalos
-//     // dentro do mesmo cenário, isso serve para ordenação e sobreposição.
-//     std::time_t epoch = std::mktime(&tm);
-//     return static_cast<long long>(epoch);
-// }
-
-//-------------------------------------------------------------------------------
-
-/************************************************************************************
- Interval management for checking acquisition time overlaps
-*************************************************************************************/
-struct Interval
-{
-    long long start; // epoch seconds
-    long long end;   // epoch seconds
-};
-
 // Insere intervalo mantendo ordenação por start, e checa conflito só com vizinhos
 static bool try_insert_interval_no_overlap(std::vector<Interval>& used, const Interval& cand)
 {
@@ -440,42 +418,6 @@ static bool try_insert_interval_no_overlap(std::vector<Interval>& used, const In
 *************************************************************************************/
 double Decoder(TSol &s, const TProblemData &data)
 {
-    // // 1) Criar lista de índices [0..n-1]
-    // std::vector<int> idx(data.n);
-    // for (int i = 0; i < data.n; i++) idx[i] = i;
-
-    // // 2) Ordenar por random-key (maior primeiro) para dar prioridade
-    // std::sort(idx.begin(), idx.end(),
-    //           [&](int a, int b){ return s.rk[a] > s.rk[b]; });
-
-    // // 3) Selecionar aquisições sem sobreposição de intervalos
-    // std::vector<Interval> used; // sempre mantida ordenada por start
-    // used.reserve(data.n);
-
-    // int selected = 0;
-
-    // for (int k = 0; k < data.n; k++)
-    // {
-    //     int i = idx[k];
-    //     const Acquisition& a = data.acquisitions[i];
-
-    //     long long start = parse_time_to_epoch_seconds(a.time);
-    //     if (start < 0) continue; // se falhar parse, pula
-
-    //     long long end = start + static_cast<long long>(a.duration);
-
-    //     if (end <= start) continue;
-
-    //     Interval cand{start, end};
-
-    //     if (try_insert_interval_no_overlap(used, cand))
-    //     {
-    //         selected++;
-    //     }
-    // }
-
-    // // 4) Como o RKO minimiza, retorna o negativo para "maximizar selected"
-    // return -static_cast<double>(selected);
 
     DecodedSolution decoded = decode_solution(s, data);
 
