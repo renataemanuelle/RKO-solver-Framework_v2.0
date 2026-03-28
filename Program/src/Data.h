@@ -14,6 +14,9 @@ struct TSol
 
     double best_time = 0.0;                               // computational time to find the solution
     char nameMH[256];                                     // name of the metaheuristic that found the solution
+
+    std::vector<int> x;
+    std::vector<int> selected_idxs;
 };
 
 /***********************************************************************************

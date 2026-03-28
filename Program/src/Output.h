@@ -33,6 +33,18 @@ void WriteSolutionScreen(const char *algorithms[], int numMH, TSol s,
 	printf("\nSolution Pool:\n");
 	for (int i = 0; i< (int)pool.size(); i++)
 		printf("%.5lf [%s]\n", pool[i].ofv, pool[i].nameMH);
+
+	for (int idx_sel : s.selected_idxs)
+	{
+    	const Acquisition& a = data.acquisitions[idx_sel];
+
+    	std::cout << "index=" << a.index
+              << " | ID=" << a.ID
+              << " | sat=" << a.satellite
+              << " | time=" << a.time
+              << " | score=" << a.score_scenario
+              << "\n";
+	}	
 }
 
 /************************************************************************************
@@ -70,6 +82,18 @@ void WriteSolution(const char *algorithms[], int numMH, TSol s,
 	fprintf(solFile,"\nofv: %lf", s.ofv);
   	fprintf(solFile,"\nBest time: %.3f",timeBest);
 	fprintf(solFile,"\nTotal time:%.3f \n",timeTotal);
+
+	for (int idx_sel : s.selected_idxs)
+	{
+    	const Acquisition& a = data.acquisitions[idx_sel];
+
+    	std::cout << "index=" << a.index
+              << " | ID=" << a.ID
+              << " | sat=" << a.satellite
+              << " | time=" << a.time
+              << " | score=" << a.score_scenario
+              << "\n";
+	}	
 
 	fclose(solFile);
 }
