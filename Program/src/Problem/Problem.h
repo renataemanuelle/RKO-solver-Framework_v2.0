@@ -1,62 +1,437 @@
-// *******************************************************************
-//      file with specific functions to solve Knapsack problem
-// *******************************************************************
-#ifndef _PROBLEM_H
-#define _PROBLEM_H
+#include "readInstance.h"
+
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <iomanip>
+#include <algorithm>
+#include <sstream>
+#include <ctime>
+#include <cmath>
+#include <cctype>
+#include <stdexcept>
+#include <tuple>
 
 //----------------- DEFINITION OF PROBLEM SPECIFIC TYPES -----------------------
-
 struct TProblemData
 {
-    int n;                                      // size of the RKO vector 
+    int n;
 
-    // other variables of the problem at hand
-    int nItems;                                 // number of items
-    int cap;                                    // capacity of the knapsack
-    std::vector <int> w;                        // weigth of the items
-    std::vector <int> b;                        // prize of the items
+    int start_year;
+    int start_month;
+    int start_day;
+    int start_hour;
+    int start_minute;
+
+    int horizon_hours;
+
+    std::vector<int> norads;
+
+    std::vector<Acquisition> acquisitions;
 };
 
 
 //-------------------------- FUNCTIONS OF SPECIFIC PROBLEM --------------------------
-
 
 /************************************************************************************
  Method: ReadData
  Description: read the input data
 *************************************************************************************/
 void ReadData(char name[], TProblemData &data)
-{ 
-    FILE *arq;
-    arq = fopen(name,"r");
+{
+    // Chama o leitor estruturado
+    InstanceData instance = read_eos_instance(std::string(name));
 
-    if (arq == NULL)
+    // Copiar dados básicos
+    data.start_year = instance.start_year;
+    data.start_month = instance.start_month;
+    data.start_day = instance.start_day;
+    data.start_hour = instance.start_hour;
+    data.start_minute = instance.start_minute;
+
+    data.horizon_hours = instance.horizon_hours;
+
+    data.norads = instance.norads;
+
+    data.acquisitions = instance.acquisitions;
+
+    // Tamanho do vetor random-key
+    data.n = data.acquisitions.size();
+
+    // Impressão para confirmação
+    std::cout << "\n=== EOS DATA LOADED (via readInstance) ===\n";
+    std::cout << "Start: " << data.start_year << "-" << data.start_month << "-" << data.start_day
+          << " " << data.start_hour << ":" << data.start_minute << "\n";
+    std::cout << "Horizon (hours): " << data.horizon_hours << "\n";
+    std::cout << "NORAD count: " << data.norads.size() << "\n\n";
+    std::cout << "Total acquisitions: " << data.n << "\n";
+
+    int to_print = std::min(3, data.n);
+
+    for (int i = 0; i < to_print; i++)
     {
-        printf("\nERROR: File (%s) not found!\n",name);
-        getchar();
-        exit(1);
+        const Acquisition& a = data.acquisitions[i];
+
+        std::cout << "\n--- Acquisition " << i << " ---\n";
+        std::cout << "index: " << a.index << "\n";
+        std::cout << "ID: " << a.ID << "\n";
+        std::cout << "stereo: " << a.stereo << "\n";
+        std::cout << "satellite: " << a.satellite << "\n";
+        std::cout << "satellite_location: " << a.satellite_location << "\n";
+        std::cout << "request_location: " << a.request_location << "\n";
+        std::cout << "time: " << a.time << "\n";
+        std::cout << "area: " << a.area << "\n";
+        std::cout << "strips: " << a.strips << "\n";
+        std::cout << "duration: " << a.duration << "\n";
+        std::cout << "distance: " << a.distance << "\n";
+        std::cout << "angle: " << a.angle << "\n";
+        std::cout << "sun_elevation: " << a.sun_elevation << "\n";
+        std::cout << "cloud_cover_estimate: " << a.cloud_cover_estimate << "\n";
+        std::cout << "priority: " << a.priority << "\n";
+        std::cout << "priority_mod: " << a.priority_mod << "\n";
+        std::cout << "customer_type_mod: " << a.customer_type_mod << "\n";
+        std::cout << "price: " << a.price << "\n";
+        std::cout << "waiting_time: " << a.waiting_time << "\n";
+        std::cout << "uncertainty: " << a.uncertainty << "\n";
+        std::cout << "cloud_cover_real: " << a.cloud_cover_real << "\n";
+        std::cout << std::fixed << std::setprecision(16);
+        std::cout << "score_scenario: " << a.score_scenario << "\n";
+        std::cout << "score_method: " << a.score_method << "\n";
+        std::cout << "score_alpha: " << a.score_alpha << "\n";
+    }
+}
+
+
+//-------------------------- AUXILIARY TYPES FOR PROBLEM SOLUTION --------------------------
+struct DecodedSolution
+{
+    std::vector<int> x;                 // 0/1 por aquisição
+    std::vector<int> selected_idxs;     // índices selecionados
+    double objective_value;             // por enquanto, soma dos score_scenario
+};
+
+struct Vec3
+{
+    double x, y, z;
+};
+
+static constexpr double PI = 3.14159265358979323846;
+
+//-------------------------- AUXILIARY FUNCTIONS FOR PROBLEM SOLUTION --------------------------
+
+static inline double deg2rad(double deg)
+{
+    return deg * PI / 180.0;
+}
+
+// Remove "np.float64(" e ")" da string, se existirem
+static std::string clean_location_string(std::string s)
+{
+    const std::string token = "np.float64(";
+
+    while (true)
+    {
+        size_t pos = s.find(token);
+        if (pos == std::string::npos) break;
+        s.erase(pos, token.size());
+
+        size_t close = s.find(')', pos);
+        if (close != std::string::npos) s.erase(close, 1);
     }
 
-    // => read data
-    fscanf(arq, "%d", &data.nItems);
-    fscanf(arq, "%d", &data.cap);
-    
-    //  weigth of items
-    data.w.clear();
-    data.w.resize(data.nItems);
+    return s;
+}
 
-    // prize of items
-    data.b.clear();
-    data.b.resize(data.nItems);
+// Extrai latitude e longitude de strings como:
+// "[57.50037782967006, 9.785145863466415]"
+// "[np.float64(55.64321798038925), np.float64(12.16354832122793)]"
+static std::pair<double, double> parse_lat_lon(const std::string& loc)
+{
+    std::string s = clean_location_string(loc);
 
-    for (int k=0; k<data.nItems; k++)
+    // manter apenas números, sinais, ponto, vírgula e expoente
+    for (char& c : s)
     {
-        fscanf(arq, "%d", &data.b[k]);
-        fscanf(arq, "%d", &data.w[k]);
+        if (!(std::isdigit(static_cast<unsigned char>(c)) ||
+              c == '-' || c == '+' || c == '.' || c == ',' ||
+              c == 'e' || c == 'E'))
+        {
+            c = ' ';
+        }
     }
-    
-    // define the random-key vector size
-    data.n = data.nItems;
+
+    std::replace(s.begin(), s.end(), ',', ' ');
+
+    std::stringstream ss(s);
+    double lat, lon;
+    ss >> lat >> lon;
+
+    if (ss.fail())
+        throw std::runtime_error("Erro ao converter latitude/longitude: " + loc);
+
+    return {lat, lon};
+}
+
+// Converte latitude/longitude para cartesiano
+// elevation_km = 0 para request, = altura do satélite para satélite
+static Vec3 cart_system(double lat_deg, double lon_deg, double elevation_km)
+{
+    const double R = 6371.0 + elevation_km;
+    const double lat = deg2rad(lat_deg);
+    const double lon = deg2rad(lon_deg);
+
+    return {
+        R * std::cos(lat) * std::cos(lon),
+        R * std::cos(lat) * std::sin(lon),
+        R * std::sin(lat)
+    };
+}
+
+static inline Vec3 subtract(const Vec3& a, const Vec3& b)
+{
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+static inline double dot(const Vec3& a, const Vec3& b)
+{
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+static inline double norm(const Vec3& v)
+{
+    return std::sqrt(dot(v, v));
+}
+
+/************************************************************************************
+ Method: parse_time_to_epoch_seconds
+ Description: parse a time string into epoch seconds (for interval overlap checking)
+*************************************************************************************/
+static long long parse_time_to_epoch_seconds(const std::string& time_str)
+{
+    std::tm tm = {};
+    std::istringstream ss(time_str);
+
+    // exemplo esperado: "2024-01-01 12:34:56"
+    ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+    if (ss.fail())
+        throw std::runtime_error("Erro ao converter tempo: " + time_str);
+
+    // mktime usa horário local; se você já tiver outra função no projeto, use a sua.
+    return static_cast<long long>(std::mktime(&tm));
+}
+
+// Calcula o ângulo entre as duas linhas de visada, em graus
+static double maneuver_angle_deg(const Acquisition& a,
+                                 const Acquisition& b,
+                                 double satellite_height_km)
+{
+    auto [sat_lat1, sat_lon1] = parse_lat_lon(a.satellite_location);
+    auto [req_lat1, req_lon1] = parse_lat_lon(a.request_location);
+
+    auto [sat_lat2, sat_lon2] = parse_lat_lon(b.satellite_location);
+    auto [req_lat2, req_lon2] = parse_lat_lon(b.request_location);
+
+    const Vec3 sat_xyz1 = cart_system(sat_lat1, sat_lon1, satellite_height_km);
+    const Vec3 req_xyz1 = cart_system(req_lat1, req_lon1, 0.0);
+    const Vec3 vec1 = subtract(sat_xyz1, req_xyz1);
+
+    const Vec3 sat_xyz2 = cart_system(sat_lat2, sat_lon2, satellite_height_km);
+    const Vec3 req_xyz2 = cart_system(req_lat2, req_lon2, 0.0);
+    const Vec3 vec2 = subtract(sat_xyz2, req_xyz2);
+
+    const double n1 = norm(vec1);
+    const double n2 = norm(vec2);
+
+    if (n1 == 0.0 || n2 == 0.0)
+        throw std::runtime_error("Norma zero ao calcular vetor de observação.");
+
+    double cos_theta = dot(vec1, vec2) / (n1 * n2);
+    cos_theta = std::clamp(cos_theta, -1.0, 1.0);
+
+    return std::acos(cos_theta) * 180.0 / PI;
+}
+
+// MÉTODO PRINCIPAL:
+// verifica se a sequência a -> b é viável por manobrabilidade
+static bool maneuver_feasible(const Acquisition& a,
+                              const Acquisition& b,
+                              double satellite_height_km = 694.0,
+                              double rotation_speed_deg_per_sec = 30.0 / 12.0)
+{
+    // no EOSPython a checagem é feita entre tentativas do mesmo satélite
+    if (a.satellite != b.satellite)
+        return false;
+
+    const long long ta = parse_time_to_epoch_seconds(a.time);
+    const long long tb = parse_time_to_epoch_seconds(b.time);
+
+    const double delta_t = static_cast<double>(tb - ta);
+    if (delta_t < 0.0)
+        return false;
+
+    const double angle_deg = maneuver_angle_deg(a, b, satellite_height_km);
+    const double t_man = angle_deg / rotation_speed_deg_per_sec;
+
+    return (a.duration + t_man) <= delta_t;
+}
+
+static bool can_insert_by_maneuver(
+    const std::vector<int>& selected_idxs,
+    int cand_idx,
+    const TProblemData& data)
+{
+    const Acquisition& cand = data.acquisitions[cand_idx];
+    const long long cand_time = parse_time_to_epoch_seconds(cand.time);
+
+    // encontrar posição temporal de inserção
+    int pos = 0;
+    while (pos < (int)selected_idxs.size())
+    {
+        const Acquisition& cur = data.acquisitions[selected_idxs[pos]];
+        long long cur_time = parse_time_to_epoch_seconds(cur.time);
+
+        if (cand_time < cur_time)
+            break;
+
+        pos++;
+    }
+
+    // checa com predecessor
+    if (pos > 0)
+    {
+        const Acquisition& prev = data.acquisitions[selected_idxs[pos - 1]];
+        if (!maneuver_feasible(prev, cand))
+            return false;
+    }
+
+    // checa com sucessor
+    if (pos < (int)selected_idxs.size())
+    {
+        const Acquisition& next = data.acquisitions[selected_idxs[pos]];
+        if (!maneuver_feasible(cand, next))
+            return false;
+    }
+
+    return true;
+}
+
+
+static void insert_sorted_by_time(
+    std::vector<int>& selected_idxs,
+    int cand_idx,
+    const TProblemData& data)
+{
+    const long long cand_time =
+        parse_time_to_epoch_seconds(data.acquisitions[cand_idx].time);
+
+    int pos = 0;
+    while (pos < (int)selected_idxs.size())
+    {
+        const long long cur_time =
+            parse_time_to_epoch_seconds(data.acquisitions[selected_idxs[pos]].time);
+
+        if (cand_time < cur_time)
+            break;
+
+        pos++;
+    }
+
+    selected_idxs.insert(selected_idxs.begin() + pos, cand_idx);
+}
+
+static DecodedSolution decode_solution(
+    const TSol& s,
+    const TProblemData& data)
+{
+    DecodedSolution out;
+    out.x.assign(data.n, 0);
+    out.objective_value = 0.0;
+
+    // 1) criar lista de índices
+    std::vector<int> idx(data.n);
+    for (int i = 0; i < data.n; i++)
+        idx[i] = i;
+
+    // 2) ordenar por random-key decrescente
+    std::sort(idx.begin(), idx.end(),
+              [&](int a, int b)
+              {
+                  return s.rk[a] > s.rk[b];
+              });
+
+    // 3) tentar inserir cada aquisição
+    for (int k = 0; k < data.n; k++)
+    {
+        int cand_idx = idx[k];
+        const Acquisition& cand = data.acquisitions[cand_idx];
+
+        // por enquanto: só restrição de manobrabilidade
+        if (can_insert_by_maneuver(out.selected_idxs, cand_idx, data))
+        {
+            insert_sorted_by_time(out.selected_idxs, cand_idx, data);
+            out.x[cand_idx] = 1;
+            out.objective_value += cand.score_scenario;
+        }
+    }
+
+    return out;
+}
+
+// /************************************************************************************
+//  Method: parse_time_to_epoch_seconds
+//  Description: parse a time string into epoch seconds (for interval overlap checking)
+// *************************************************************************************/
+// static long long parse_time_to_epoch_seconds(const std::string& t)
+// {
+//     // Formato esperado: "2025-11-21 10:12:20"
+//     std::tm tm{};
+//     std::istringstream ss(t);
+//     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+//     if (ss.fail())
+//         return -1;
+
+//     // mktime interpreta tm como horário local; como estamos só comparando intervalos
+//     // dentro do mesmo cenário, isso serve para ordenação e sobreposição.
+//     std::time_t epoch = std::mktime(&tm);
+//     return static_cast<long long>(epoch);
+// }
+
+//-------------------------------------------------------------------------------
+
+/************************************************************************************
+ Interval management for checking acquisition time overlaps
+*************************************************************************************/
+struct Interval
+{
+    long long start; // epoch seconds
+    long long end;   // epoch seconds
+};
+
+// Insere intervalo mantendo ordenação por start, e checa conflito só com vizinhos
+static bool try_insert_interval_no_overlap(std::vector<Interval>& used, const Interval& cand)
+{
+    auto it = std::lower_bound(
+        used.begin(), used.end(), cand.start,
+        [](const Interval& a, long long s){ return a.start < s; }
+    );
+
+    // Checa conflito com anterior
+    if (it != used.begin())
+    {
+        const Interval& prev = *(it - 1);
+        if (cand.start < prev.end) return false; // sobrepõe
+    }
+
+    // Checa conflito com próximo
+    if (it != used.end())
+    {
+        const Interval& next = *it;
+        if (cand.end > next.start) return false; // sobrepõe
+    }
+
+    used.insert(it, cand);
+    return true;
 }
 
 /************************************************************************************
@@ -64,37 +439,52 @@ void ReadData(char name[], TProblemData &data)
  Description: mapping the random-key solution into a problem solution
 *************************************************************************************/
 double Decoder(TSol &s, const TProblemData &data)
-{   
-    // create a solution of the KP
-    std::vector <int> sol(data.n, 0);                        
-    for (int i = 0; i < data.n; i++)
-    {
-        if (s.rk[i] > 0.5)
-            sol[i] = 1;
-    }
+{
+    // // 1) Criar lista de índices [0..n-1]
+    // std::vector<int> idx(data.n);
+    // for (int i = 0; i < data.n; i++) idx[i] = i;
 
-    // calculate the objective function value
-    int cost = 0;
-    int totalW = 0;
-    for (int i = 0; i < data.n; i++)
-    {
-        if (sol[i] == 1)
-        {
-            cost += data.b[i];
-            totalW += data.w[i];
-        }
-    }
+    // // 2) Ordenar por random-key (maior primeiro) para dar prioridade
+    // std::sort(idx.begin(), idx.end(),
+    //           [&](int a, int b){ return s.rk[a] > s.rk[b]; });
 
-    #define MAX(x,y) ((x)<(y) ? (y) : (x))
+    // // 3) Selecionar aquisições sem sobreposição de intervalos
+    // std::vector<Interval> used; // sempre mantida ordenada por start
+    // used.reserve(data.n);
 
-    // penalty infeasible solutions
-    int infeasible = ((data.cap)<(totalW) ? (totalW - data.cap) : (0));
-    cost = cost - (100000 * infeasible);
+    // int selected = 0;
 
-    // change to minimization problem
-    cost = cost * -1;
-    
-    return cost;
+    // for (int k = 0; k < data.n; k++)
+    // {
+    //     int i = idx[k];
+    //     const Acquisition& a = data.acquisitions[i];
+
+    //     long long start = parse_time_to_epoch_seconds(a.time);
+    //     if (start < 0) continue; // se falhar parse, pula
+
+    //     long long end = start + static_cast<long long>(a.duration);
+
+    //     if (end <= start) continue;
+
+    //     Interval cand{start, end};
+
+    //     if (try_insert_interval_no_overlap(used, cand))
+    //     {
+    //         selected++;
+    //     }
+    // }
+
+    // // 4) Como o RKO minimiza, retorna o negativo para "maximizar selected"
+    // return -static_cast<double>(selected);
+
+    DecodedSolution decoded = decode_solution(s, data);
+
+    // salvar dentro da solução, se sua estrutura permitir
+    s.selected_idxs = decoded.selected_idxs;
+    s.x = decoded.x;
+
+    return decoded.objective_value;
+
 }
 
 
@@ -103,8 +493,6 @@ double Decoder(TSol &s, const TProblemData &data)
  Description: Free local memory allocate by Problem
 *************************************************************************************/
 void FreeMemoryProblem(TProblemData &data){
-    data.b.clear();
-    data.w.clear();
+    data.norads.clear();
+    data.acquisitions.clear();
 }
-
-#endif
