@@ -67,6 +67,35 @@ void ReadData(char name[], TProblemData &data)
 
     data.acquisitions = instance.acquisitions;
 
+    // Deduplicação: remover linhas exatamente idênticas (artefato da expansão
+    // stereo do LP no EOSPython — aquisições clonadas para simplificar S_constraint)
+    {
+        const int original_size = (int)data.acquisitions.size();
+        std::set<std::string> seen;
+        std::vector<Acquisition> unique;
+        unique.reserve(original_size);
+
+        for (auto& a : data.acquisitions)
+        {
+            std::string key = a.ID + "|" + std::to_string(a.satellite) + "|"
+                            + a.time + "|" + a.satellite_location;
+            if (seen.insert(key).second)
+                unique.push_back(std::move(a));
+        }
+
+        data.acquisitions = std::move(unique);
+
+        // Reatribuir index = posição no vetor (garante unicidade e rastreabilidade)
+        for (int i = 0; i < (int)data.acquisitions.size(); i++)
+            data.acquisitions[i].index = i;
+
+        int removed = original_size - (int)data.acquisitions.size();
+        if (removed > 0)
+            std::cout << "Deduplication: removed " << removed
+                      << " duplicate rows (" << original_size << " -> "
+                      << data.acquisitions.size() << ")\n";
+    }
+
     // Tamanho do vetor random-key
     data.n = data.acquisitions.size();
 
