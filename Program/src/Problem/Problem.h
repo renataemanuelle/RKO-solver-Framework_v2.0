@@ -12,6 +12,9 @@
 #include <cctype>
 #include <stdexcept>
 #include <tuple>
+#include <map>
+#include <set>
+#include <numeric>
 
 //----------------- DEFINITION OF PROBLEM SPECIFIC TYPES -----------------------
 struct TProblemData
@@ -29,10 +32,18 @@ struct TProblemData
     std::vector<int> norads;
 
     std::vector<Acquisition> acquisitions;
+
+    // Pares stereo válidos (ângulo de visada entre 15° e 20°)
+    std::vector<std::pair<int, int>> stereo_pairs;
+    // Mapeamento: índice de aquisição → parceiros stereo válidos
+    std::map<int, std::vector<int>> stereo_partners;
 };
 
 
 //-------------------------- FUNCTIONS OF SPECIFIC PROBLEM --------------------------
+
+// Forward declaration (definida após maneuver_angle_deg)
+static void compute_stereo_pairs(TProblemData& data, double satellite_height_km = 694.0);
 
 /************************************************************************************
  Method: ReadData
@@ -100,6 +111,10 @@ void ReadData(char name[], TProblemData &data)
         std::cout << "score_method: " << a.score_method << "\n";
         std::cout << "score_alpha: " << a.score_alpha << "\n";
     }
+
+    // Pré-computar pares stereo válidos
+    compute_stereo_pairs(data);
+    std::cout << "Stereo pairs found: " << data.stereo_pairs.size() << "\n";
 }
 
 
@@ -283,6 +298,51 @@ static bool maneuver_feasible(const Acquisition& a,
     return (a.duration + t_man) <= delta_t;
 }
 
+// Constantes para validação de pares stereo (conforme EOSPython)
+static constexpr double STEREO_ANGLE_CENTER = 17.5;
+static constexpr double STEREO_ANGLE_ERROR  = 2.5;
+
+// Pré-computa pares stereo válidos: para cada ID com stereo > 0,
+// verifica se o ângulo entre as linhas de visada está em [15°, 20°]
+static void compute_stereo_pairs(TProblemData& data, double satellite_height_km)
+{
+    data.stereo_pairs.clear();
+    data.stereo_partners.clear();
+
+    // Agrupar aquisições stereo por ID
+    std::map<std::string, std::vector<int>> stereo_groups;
+    for (int i = 0; i < data.n; i++)
+    {
+        if (data.acquisitions[i].stereo > 0)
+            stereo_groups[data.acquisitions[i].ID].push_back(i);
+    }
+
+    // Para cada grupo, verificar todos os pares
+    for (const auto& [id, indices] : stereo_groups)
+    {
+        if (indices.size() <= 1) continue;
+
+        for (size_t a = 0; a < indices.size() - 1; a++)
+        {
+            for (size_t b = a + 1; b < indices.size(); b++)
+            {
+                double angle = maneuver_angle_deg(
+                    data.acquisitions[indices[a]],
+                    data.acquisitions[indices[b]],
+                    satellite_height_km);
+
+                if (angle >= STEREO_ANGLE_CENTER - STEREO_ANGLE_ERROR &&
+                    angle <= STEREO_ANGLE_CENTER + STEREO_ANGLE_ERROR)
+                {
+                    data.stereo_pairs.push_back({(int)indices[a], (int)indices[b]});
+                    data.stereo_partners[(int)indices[a]].push_back((int)indices[b]);
+                    data.stereo_partners[(int)indices[b]].push_back((int)indices[a]);
+                }
+            }
+        }
+    }
+}
+
 static bool can_insert_by_maneuver(
     const std::vector<int>& selected_idxs,
     int cand_idx,
@@ -347,6 +407,39 @@ static void insert_sorted_by_time(
     selected_idxs.insert(selected_idxs.begin() + pos, cand_idx);
 }
 
+// Verifica se um intervalo pode ser inserido sem sobreposição temporal (não modifica o vetor)
+static bool can_insert_interval_no_overlap(const std::vector<Interval>& used, const Interval& cand)
+{
+    auto it = std::lower_bound(
+        used.begin(), used.end(), cand.start,
+        [](const Interval& a, long long s){ return a.start < s; }
+    );
+
+    if (it != used.begin())
+    {
+        const Interval& prev = *(it - 1);
+        if (cand.start < prev.end) return false;
+    }
+
+    if (it != used.end())
+    {
+        const Interval& next = *it;
+        if (cand.end > next.start) return false;
+    }
+
+    return true;
+}
+
+// Insere intervalo mantendo ordenação por start (chamar após verificar com can_insert_interval_no_overlap)
+static void insert_interval_sorted(std::vector<Interval>& used, const Interval& cand)
+{
+    auto it = std::lower_bound(
+        used.begin(), used.end(), cand.start,
+        [](const Interval& a, long long s){ return a.start < s; }
+    );
+    used.insert(it, cand);
+}
+
 // Decodifica uma solução random-key para uma solução do problema
 static DecodedSolution decode_solution(
     const TSol& s,
@@ -356,60 +449,95 @@ static DecodedSolution decode_solution(
     out.x.assign(data.n, 0);
     out.objective_value = 0.0;
 
+    // Intervalos ocupados por satélite (para detectar sobreposição temporal)
+    std::map<int, std::vector<Interval>> sat_intervals;
+
+    // Contador de seleções por ID: limite = max(stereo+1, strips) conforme EOSPython
+    std::map<std::string, int> id_selection_count;
+
     // 1) criar lista de índices
     std::vector<int> idx(data.n);
-    for (int i = 0; i < data.n; i++)
-        idx[i] = i;
+    std::iota(idx.begin(), idx.end(), 0);
 
-    // 2) ordenar por random-key decrescente
+    // 2) ordenar por random-key decrescente (maior chave = maior prioridade)
     std::sort(idx.begin(), idx.end(),
               [&](int a, int b)
               {
                   return s.rk[a] > s.rk[b];
               });
 
-    // 3) tentar inserir cada aquisição
+    // 3) inserção gulosa com verificação de restrições
     for (int k = 0; k < data.n; k++)
     {
         int cand_idx = idx[k];
         const Acquisition& cand = data.acquisitions[cand_idx];
 
-        // por enquanto: só restrição de manobrabilidade
-        if (can_insert_by_maneuver(out.selected_idxs, cand_idx, data))
+        // Restrição 1: limite de seleções por ID
+        // max(stereo+1, strips): normal→1, stereo=1→2, strips=2→2, strips=3→3
+        int max_per_id = std::max(cand.stereo + 1, cand.strips);
+        if (id_selection_count[cand.ID] >= max_per_id)
+            continue;
+
+        // Intervalo temporal da aquisição candidata
+        long long cand_start = parse_time_to_epoch_seconds(cand.time);
+        long long cand_end = cand_start + static_cast<long long>(std::ceil(cand.duration));
+        Interval cand_interval = {cand_start, cand_end};
+
+        // Restrição 2: sobreposição temporal no mesmo satélite
+        if (!can_insert_interval_no_overlap(sat_intervals[cand.satellite], cand_interval))
+            continue;
+
+        // Restrição 3: viabilidade de manobra com vizinhos temporais
+        if (!can_insert_by_maneuver(out.selected_idxs, cand_idx, data))
+            continue;
+
+        // Todas as restrições satisfeitas: inserir a aquisição
+        id_selection_count[cand.ID]++;
+        insert_interval_sorted(sat_intervals[cand.satellite], cand_interval);
+        insert_sorted_by_time(out.selected_idxs, cand_idx, data);
+        out.x[cand_idx] = 1;
+        out.objective_value += cand.score_scenario;
+    }
+
+    // Pós-processamento: restrição de pares stereo (ambos selecionados ou nenhum)
+    // Para cada par válido, se apenas um foi selecionado, remover o selecionado.
+    // Iterar até estabilizar (remoção de um pode afetar pares encadeados).
+    bool any_stereo_removal = false;
+    {
+        bool changed = true;
+        while (changed)
         {
-            insert_sorted_by_time(out.selected_idxs, cand_idx, data);
-            out.x[cand_idx] = 1;
-            out.objective_value += cand.score_scenario;
+            changed = false;
+            for (const auto& [idx_a, idx_b] : data.stereo_pairs)
+            {
+                if (out.x[idx_a] != out.x[idx_b])
+                {
+                    int to_remove = out.x[idx_a] ? idx_a : idx_b;
+                    out.x[to_remove] = 0;
+                    out.objective_value -= data.acquisitions[to_remove].score_scenario;
+                    changed = true;
+                    any_stereo_removal = true;
+                }
+            }
         }
     }
 
+    // Se houve remoções no pós-processamento, reconstruir selected_idxs
+    if (any_stereo_removal)
+    {
+        out.selected_idxs.clear();
+        for (int i = 0; i < data.n; i++)
+        {
+            if (out.x[i]) out.selected_idxs.push_back(i);
+        }
+        std::sort(out.selected_idxs.begin(), out.selected_idxs.end(),
+            [&](int a, int b) {
+                return parse_time_to_epoch_seconds(data.acquisitions[a].time)
+                     < parse_time_to_epoch_seconds(data.acquisitions[b].time);
+            });
+    }
+
     return out;
-}
-
-// Insere intervalo mantendo ordenação por start, e checa conflito só com vizinhos
-static bool try_insert_interval_no_overlap(std::vector<Interval>& used, const Interval& cand)
-{
-    auto it = std::lower_bound(
-        used.begin(), used.end(), cand.start,
-        [](const Interval& a, long long s){ return a.start < s; }
-    );
-
-    // Checa conflito com anterior
-    if (it != used.begin())
-    {
-        const Interval& prev = *(it - 1);
-        if (cand.start < prev.end) return false; // sobrepõe
-    }
-
-    // Checa conflito com próximo
-    if (it != used.end())
-    {
-        const Interval& next = *it;
-        if (cand.end > next.start) return false; // sobrepõe
-    }
-
-    used.insert(it, cand);
-    return true;
 }
 
 /************************************************************************************
@@ -418,15 +546,14 @@ static bool try_insert_interval_no_overlap(std::vector<Interval>& used, const In
 *************************************************************************************/
 double Decoder(TSol &s, const TProblemData &data)
 {
-
     DecodedSolution decoded = decode_solution(s, data);
 
-    // salvar dentro da solução, se sua estrutura permitir
     s.selected_idxs = decoded.selected_idxs;
     s.x = decoded.x;
 
-    return decoded.objective_value;
-
+    // Negamos o score porque o framework RKO MINIMIZA, mas o EOS quer MAXIMIZAR.
+    // Assim, score maior → ofv menor → melhor no ranking do pool.
+    return -decoded.objective_value;
 }
 
 
