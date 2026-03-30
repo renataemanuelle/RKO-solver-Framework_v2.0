@@ -478,92 +478,116 @@ static DecodedSolution decode_solution(
     out.x.assign(data.n, 0);
     out.objective_value = 0.0;
 
-    // Intervalos ocupados por satélite (para detectar sobreposição temporal)
     std::map<int, std::vector<Interval>> sat_intervals;
-
-    // Contador de seleções por ID: limite = max(stereo+1, strips) conforme EOSPython
     std::map<std::string, int> id_selection_count;
 
-    // 1) criar lista de índices
+    // Tenta inserir uma aquisição verificando todas as restrições.
+    // Retorna true se já estava selecionada ou se foi inserida com sucesso.
+    auto try_insert = [&](int idx) -> bool {
+        if (out.x[idx] == 1) return true;
+
+        const Acquisition& acq = data.acquisitions[idx];
+
+        int max_per_id = std::max(acq.stereo + 1, acq.strips);
+        if (id_selection_count[acq.ID] >= max_per_id)
+            return false;
+
+        long long start = parse_time_to_epoch_seconds(acq.time);
+        long long end = start + static_cast<long long>(std::ceil(acq.duration));
+        Interval interval = {start, end};
+
+        if (!can_insert_interval_no_overlap(sat_intervals[acq.satellite], interval))
+            return false;
+
+        if (!can_insert_by_maneuver(out.selected_idxs, idx, data))
+            return false;
+
+        id_selection_count[acq.ID]++;
+        insert_interval_sorted(sat_intervals[acq.satellite], interval);
+        insert_sorted_by_time(out.selected_idxs, idx, data);
+        out.x[idx] = 1;
+        out.objective_value += acq.score_scenario;
+        return true;
+    };
+
+    // Desfaz inserção de uma aquisição (inversa de try_insert)
+    auto undo_insert = [&](int idx) {
+        const Acquisition& acq = data.acquisitions[idx];
+        out.x[idx] = 0;
+        out.objective_value -= acq.score_scenario;
+        id_selection_count[acq.ID]--;
+
+        auto sit = std::find(out.selected_idxs.begin(), out.selected_idxs.end(), idx);
+        if (sit != out.selected_idxs.end()) out.selected_idxs.erase(sit);
+
+        long long start = parse_time_to_epoch_seconds(acq.time);
+        auto& intervals = sat_intervals[acq.satellite];
+        auto iit = std::find_if(intervals.begin(), intervals.end(),
+            [start](const Interval& iv) { return iv.start == start; });
+        if (iit != intervals.end()) intervals.erase(iit);
+    };
+
     std::vector<int> idx(data.n);
     std::iota(idx.begin(), idx.end(), 0);
 
-    // 2) ordenar por random-key decrescente (maior chave = maior prioridade)
     std::sort(idx.begin(), idx.end(),
               [&](int a, int b)
               {
                   return s.rk[a] > s.rk[b];
               });
 
-    // 3) inserção gulosa com verificação de restrições
+    // Inserção gulosa com enforcement eager de pares stereo (conforme EOSPython)
     for (int k = 0; k < data.n; k++)
     {
         int cand_idx = idx[k];
+
+        if (out.x[cand_idx] == 1) continue;
+
         const Acquisition& cand = data.acquisitions[cand_idx];
 
-        // Restrição 1: limite de seleções por ID
-        // max(stereo+1, strips): normal→1, stereo=1→2, strips=2→2, strips=3→3
-        int max_per_id = std::max(cand.stereo + 1, cand.strips);
-        if (id_selection_count[cand.ID] >= max_per_id)
-            continue;
+        auto partners_it = data.stereo_partners.find(cand_idx);
+        bool has_valid_partners = (cand.stereo > 0) &&
+            (partners_it != data.stereo_partners.end()) &&
+            !partners_it->second.empty();
 
-        // Intervalo temporal da aquisição candidata
-        long long cand_start = parse_time_to_epoch_seconds(cand.time);
-        long long cand_end = cand_start + static_cast<long long>(std::ceil(cand.duration));
-        Interval cand_interval = {cand_start, cand_end};
-
-        // Restrição 2: sobreposição temporal no mesmo satélite
-        if (!can_insert_interval_no_overlap(sat_intervals[cand.satellite], cand_interval))
-            continue;
-
-        // Restrição 3: viabilidade de manobra com vizinhos temporais
-        if (!can_insert_by_maneuver(out.selected_idxs, cand_idx, data))
-            continue;
-
-        // Todas as restrições satisfeitas: inserir a aquisição
-        id_selection_count[cand.ID]++;
-        insert_interval_sorted(sat_intervals[cand.satellite], cand_interval);
-        insert_sorted_by_time(out.selected_idxs, cand_idx, data);
-        out.x[cand_idx] = 1;
-        out.objective_value += cand.score_scenario;
-    }
-
-    // Pós-processamento: restrição de pares stereo (ambos selecionados ou nenhum)
-    // Para cada par válido, se apenas um foi selecionado, remover o selecionado.
-    // Iterar até estabilizar (remoção de um pode afetar pares encadeados).
-    bool any_stereo_removal = false;
-    {
-        bool changed = true;
-        while (changed)
+        if (has_valid_partners)
         {
-            changed = false;
-            for (const auto& [idx_a, idx_b] : data.stereo_pairs)
+            bool partner_already_selected = false;
+            for (int p : partners_it->second)
             {
-                if (out.x[idx_a] != out.x[idx_b])
+                if (out.x[p] == 1) { partner_already_selected = true; break; }
+            }
+
+            if (partner_already_selected)
+            {
+                try_insert(cand_idx);
+            }
+            else
+            {
+                if (!try_insert(cand_idx))
+                    continue;
+
+                std::vector<int> partners = partners_it->second;
+                std::sort(partners.begin(), partners.end(), [&](int a, int b) {
+                    return data.acquisitions[a].score_scenario
+                         > data.acquisitions[b].score_scenario;
+                });
+
+                bool found_partner = false;
+                for (int p : partners)
                 {
-                    int to_remove = out.x[idx_a] ? idx_a : idx_b;
-                    out.x[to_remove] = 0;
-                    out.objective_value -= data.acquisitions[to_remove].score_scenario;
-                    changed = true;
-                    any_stereo_removal = true;
+                    if (out.x[p] == 1) { found_partner = true; break; }
+                    if (try_insert(p))  { found_partner = true; break; }
                 }
+
+                if (!found_partner)
+                    undo_insert(cand_idx);
             }
         }
-    }
-
-    // Se houve remoções no pós-processamento, reconstruir selected_idxs
-    if (any_stereo_removal)
-    {
-        out.selected_idxs.clear();
-        for (int i = 0; i < data.n; i++)
+        else
         {
-            if (out.x[i]) out.selected_idxs.push_back(i);
+            try_insert(cand_idx);
         }
-        std::sort(out.selected_idxs.begin(), out.selected_idxs.end(),
-            [&](int a, int b) {
-                return parse_time_to_epoch_seconds(data.acquisitions[a].time)
-                     < parse_time_to_epoch_seconds(data.acquisitions[b].time);
-            });
     }
 
     return out;
