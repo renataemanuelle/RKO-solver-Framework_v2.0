@@ -306,6 +306,8 @@ int main(int argc, char *argv[ ])
         WriteSolutionScreen(algorithms, NUM_MH, bestSolution, timeBest, timeTotal, nameInstance, data, pool);
     }
 
+    EvaluateSolution(bestSolution, data, timeBest, timeTotal, nameInstance, pool);
+
     // free memory with problem data
     FreeMemoryProblem(data);
 
