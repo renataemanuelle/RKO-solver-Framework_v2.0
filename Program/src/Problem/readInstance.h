@@ -19,6 +19,8 @@ struct DateTime {
     }
 };
 
+struct Vec3 { double x, y, z; };
+
 struct Acquisition
 {
     int index;
@@ -45,6 +47,11 @@ struct Acquisition
     double score_scenario;
     std::string score_method;
     double score_alpha;
+
+    // Pre-computed fields (populated in ReadData, avoid repeated parsing)
+    long long epoch_seconds = 0;
+    Vec3 sat_xyz = {0, 0, 0};
+    Vec3 req_xyz = {0, 0, 0};
 };
 
 struct InstanceData

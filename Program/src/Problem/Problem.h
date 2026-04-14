@@ -49,8 +49,9 @@ struct TProblemData
 
 //-------------------------- FUNCTIONS OF SPECIFIC PROBLEM --------------------------
 
-// Forward declaration (definida após maneuver_angle_deg)
-static void compute_stereo_pairs(TProblemData& data, double satellite_height_km = 694.0);
+// Forward declarations
+static void precompute_acquisition_fields(TProblemData& data, double satellite_height_km = 694.0);
+static void compute_stereo_pairs(TProblemData& data);
 
 /************************************************************************************
  Method: ReadData
@@ -165,6 +166,9 @@ void ReadData(char name[], TProblemData &data)
         std::cout << "score_alpha: " << a.score_alpha << "\n";
     }
 
+    // Pré-calcular campos derivados (epoch_seconds, sat_xyz, req_xyz)
+    precompute_acquisition_fields(data);
+
     // Pré-computar pares stereo válidos
     compute_stereo_pairs(data);
     std::cout << "Stereo pairs found: " << data.stereo_pairs.size() << "\n";
@@ -183,11 +187,6 @@ struct Interval
 {
     long long start; // epoch seconds
     long long end;   // epoch seconds
-};
-
-struct Vec3
-{
-    double x, y, z;
 };
 
 static constexpr double PI = 3.14159265358979323846;
@@ -296,24 +295,12 @@ static long long parse_time_to_epoch_seconds(const std::string& time_str)
     return static_cast<long long>(std::mktime(&tm));
 }
 
-// Calcula o ângulo entre as duas linhas de visada, em graus
-static double maneuver_angle_deg(const Acquisition& a,
-                                 const Acquisition& b,
-                                 double satellite_height_km)
+// Calcula o ângulo entre as duas linhas de visada, em graus.
+// Usa coordenadas cartesianas pré-calculadas (sat_xyz, req_xyz).
+static double maneuver_angle_deg_fast(const Acquisition& a, const Acquisition& b)
 {
-    auto [sat_lat1, sat_lon1] = parse_lat_lon(a.satellite_location);
-    auto [req_lat1, req_lon1] = parse_lat_lon(a.request_location);
-
-    auto [sat_lat2, sat_lon2] = parse_lat_lon(b.satellite_location);
-    auto [req_lat2, req_lon2] = parse_lat_lon(b.request_location);
-
-    const Vec3 sat_xyz1 = cart_system(sat_lat1, sat_lon1, satellite_height_km);
-    const Vec3 req_xyz1 = cart_system(req_lat1, req_lon1, 0.0);
-    const Vec3 vec1 = subtract(sat_xyz1, req_xyz1);
-
-    const Vec3 sat_xyz2 = cart_system(sat_lat2, sat_lon2, satellite_height_km);
-    const Vec3 req_xyz2 = cart_system(req_lat2, req_lon2, 0.0);
-    const Vec3 vec2 = subtract(sat_xyz2, req_xyz2);
+    const Vec3 vec1 = subtract(a.sat_xyz, a.req_xyz);
+    const Vec3 vec2 = subtract(b.sat_xyz, b.req_xyz);
 
     const double n1 = norm(vec1);
     const double n2 = norm(vec2);
@@ -327,28 +314,43 @@ static double maneuver_angle_deg(const Acquisition& a,
     return std::acos(cos_theta) * 180.0 / PI;
 }
 
-// MÉTODO PRINCIPAL:
-// verifica se a sequência a -> b é viável por manobrabilidade
+// Verifica se a sequência a -> b é viável por manobrabilidade.
+// Usa epoch_seconds e coordenadas pré-calculadas.
 static bool maneuver_feasible(const Acquisition& a,
                               const Acquisition& b,
-                              double satellite_height_km = 694.0,
                               double rotation_speed_deg_per_sec = 30.0 / 12.0)
 {
-    // no EOSPython a checagem é feita entre tentativas do mesmo satélite
     if (a.satellite != b.satellite)
         return false;
 
-    const long long ta = parse_time_to_epoch_seconds(a.time);
-    const long long tb = parse_time_to_epoch_seconds(b.time);
-
-    const double delta_t = static_cast<double>(tb - ta);
+    const double delta_t = static_cast<double>(b.epoch_seconds - a.epoch_seconds);
     if (delta_t < 0.0)
         return false;
 
-    const double angle_deg = maneuver_angle_deg(a, b, satellite_height_km);
+    const double angle_deg = maneuver_angle_deg_fast(a, b);
     const double t_man = angle_deg / rotation_speed_deg_per_sec;
 
     return (a.duration + t_man) <= delta_t;
+}
+
+// Pré-calcula epoch_seconds e coordenadas cartesianas para todas as aquisições.
+// Deve ser chamada uma vez após a deduplicação, antes de compute_stereo_pairs.
+static void precompute_acquisition_fields(TProblemData& data,
+                                          double satellite_height_km)
+{
+    for (auto& a : data.acquisitions)
+    {
+        std::tm tm = {};
+        std::istringstream ss(a.time);
+        ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+        a.epoch_seconds = static_cast<long long>(std::mktime(&tm));
+
+        auto [slat, slon] = parse_lat_lon(a.satellite_location);
+        a.sat_xyz = cart_system(slat, slon, satellite_height_km);
+
+        auto [rlat, rlon] = parse_lat_lon(a.request_location);
+        a.req_xyz = cart_system(rlat, rlon, 0.0);
+    }
 }
 
 // Constantes para validação de pares stereo (conforme EOSPython)
@@ -357,7 +359,7 @@ static constexpr double STEREO_ANGLE_ERROR  = 2.5;
 
 // Pré-computa pares stereo válidos: para cada ID com stereo > 0,
 // verifica se o ângulo entre as linhas de visada está em [15°, 20°]
-static void compute_stereo_pairs(TProblemData& data, double satellite_height_km)
+static void compute_stereo_pairs(TProblemData& data)
 {
     data.stereo_pairs.clear();
     data.stereo_partners.clear();
@@ -379,10 +381,9 @@ static void compute_stereo_pairs(TProblemData& data, double satellite_height_km)
         {
             for (size_t b = a + 1; b < indices.size(); b++)
             {
-                double angle = maneuver_angle_deg(
+                double angle = maneuver_angle_deg_fast(
                     data.acquisitions[indices[a]],
-                    data.acquisitions[indices[b]],
-                    satellite_height_km);
+                    data.acquisitions[indices[b]]);
 
                 if (angle >= STEREO_ANGLE_CENTER - STEREO_ANGLE_ERROR &&
                     angle <= STEREO_ANGLE_CENTER + STEREO_ANGLE_ERROR)
@@ -402,62 +403,46 @@ static bool can_insert_by_maneuver(
     const TProblemData& data)
 {
     const Acquisition& cand = data.acquisitions[cand_idx];
-    const long long cand_time = parse_time_to_epoch_seconds(cand.time);
+    const long long cand_time = cand.epoch_seconds;
 
-    // encontrar posição temporal de inserção
-    int pos = 0;
-    while (pos < (int)selected_idxs.size())
-    {
-        const Acquisition& cur = data.acquisitions[selected_idxs[pos]];
-        long long cur_time = parse_time_to_epoch_seconds(cur.time);
+    // Busca binária pela posição temporal de inserção — O(log n)
+    auto it = std::lower_bound(
+        selected_idxs.begin(), selected_idxs.end(), cand_time,
+        [&](int idx, long long t) {
+            return data.acquisitions[idx].epoch_seconds < t;
+        });
+    int pos = (int)(it - selected_idxs.begin());
 
-        if (cand_time < cur_time)
-            break;
-
-        pos++;
-    }
-
-    // checa com predecessor
     if (pos > 0)
     {
-        const Acquisition& prev = data.acquisitions[selected_idxs[pos - 1]];
-        if (!maneuver_feasible(prev, cand))
+        if (!maneuver_feasible(data.acquisitions[selected_idxs[pos - 1]], cand))
             return false;
     }
 
-    // checa com sucessor
     if (pos < (int)selected_idxs.size())
     {
-        const Acquisition& next = data.acquisitions[selected_idxs[pos]];
-        if (!maneuver_feasible(cand, next))
+        if (!maneuver_feasible(cand, data.acquisitions[selected_idxs[pos]]))
             return false;
     }
 
     return true;
 }
 
-// Insere uma aquisição na lista ordenada por tempo
+// Insere uma aquisição na lista ordenada por tempo — O(log n) para busca
 static void insert_sorted_by_time(
     std::vector<int>& selected_idxs,
     int cand_idx,
     const TProblemData& data)
 {
-    const long long cand_time =
-        parse_time_to_epoch_seconds(data.acquisitions[cand_idx].time);
+    const long long cand_time = data.acquisitions[cand_idx].epoch_seconds;
 
-    int pos = 0;
-    while (pos < (int)selected_idxs.size())
-    {
-        const long long cur_time =
-            parse_time_to_epoch_seconds(data.acquisitions[selected_idxs[pos]].time);
+    auto it = std::lower_bound(
+        selected_idxs.begin(), selected_idxs.end(), cand_time,
+        [&](int idx, long long t) {
+            return data.acquisitions[idx].epoch_seconds < t;
+        });
 
-        if (cand_time < cur_time)
-            break;
-
-        pos++;
-    }
-
-    selected_idxs.insert(selected_idxs.begin() + pos, cand_idx);
+    selected_idxs.insert(it, cand_idx);
 }
 
 // Verifica se um intervalo pode ser inserido sem sobreposição temporal (não modifica o vetor)
@@ -516,9 +501,8 @@ static DecodedSolution decode_solution(
         if (id_selection_count[acq.ID] >= max_per_id)
             return false;
 
-        long long start = parse_time_to_epoch_seconds(acq.time);
-        long long end = start + static_cast<long long>(std::ceil(acq.duration));
-        Interval interval = {start, end};
+        Interval interval = {acq.epoch_seconds,
+                              acq.epoch_seconds + static_cast<long long>(std::ceil(acq.duration))};
 
         if (!can_insert_interval_no_overlap(sat_intervals[acq.satellite], interval))
             return false;
@@ -544,10 +528,9 @@ static DecodedSolution decode_solution(
         auto sit = std::find(out.selected_idxs.begin(), out.selected_idxs.end(), idx);
         if (sit != out.selected_idxs.end()) out.selected_idxs.erase(sit);
 
-        long long start = parse_time_to_epoch_seconds(acq.time);
         auto& intervals = sat_intervals[acq.satellite];
         auto iit = std::find_if(intervals.begin(), intervals.end(),
-            [start](const Interval& iv) { return iv.start == start; });
+            [&acq](const Interval& iv) { return iv.start == acq.epoch_seconds; });
         if (iit != intervals.end()) intervals.erase(iit);
     };
 
