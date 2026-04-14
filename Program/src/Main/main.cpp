@@ -173,7 +173,8 @@ int main(int argc, char *argv[ ])
            foAverage = 0.0;
 
     float timeBest = 0.0,
-          timeTotal = 0.0;
+          timeTotal = 0.0,
+          timeSolver = 0.0;
 
     std::vector <double> ofvs;
     ofvs.clear();
@@ -206,9 +207,10 @@ int main(int argc, char *argv[ ])
         bestSolution.best_time = 0.0;
         
         // computational times
-        double start_time, end_time;                
+        double start_time, end_time, solver_start_time;
         start_time = get_time_in_seconds();
         end_time = get_time_in_seconds();
+        solver_start_time = start_time;
 
         // ****************** run the RKO ******************
         // run all metaheuristics in parallel using OpenMP
@@ -222,6 +224,8 @@ int main(int argc, char *argv[ ])
 
             // best solution found in this run
             bestSolutionRun = pool[0];
+
+            solver_start_time = get_time_in_seconds();
 
             omp_set_num_threads(NUM_MH);
             #pragma omp parallel private(rng) shared(pool, stop_execution)
@@ -289,12 +293,14 @@ int main(int argc, char *argv[ ])
         // computational time
         timeBest += bestSolutionRun.best_time - start_time;
         timeTotal += end_time - start_time;
+        timeSolver += end_time - solver_start_time;
     }
 
     // create a .csv file with average results
     foAverage = foAverage / runData.MAXRUNS;
     timeBest = timeBest / runData.MAXRUNS;
     timeTotal = timeTotal / runData.MAXRUNS;
+    timeSolver = timeSolver / runData.MAXRUNS;
 
     if (!runData.debug)
     {
@@ -306,7 +312,7 @@ int main(int argc, char *argv[ ])
         WriteSolutionScreen(algorithms, NUM_MH, bestSolution, timeBest, timeTotal, nameInstance, data, pool);
     }
 
-    EvaluateSolution(bestSolution, data, timeBest, timeTotal, nameInstance, pool);
+    EvaluateSolution(bestSolution, data, timeBest, timeTotal, timeSolver, nameInstance, pool);
 
     // free memory with problem data
     FreeMemoryProblem(data);

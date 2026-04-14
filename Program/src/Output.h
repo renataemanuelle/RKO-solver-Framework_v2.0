@@ -145,8 +145,8 @@ void WriteResults(const char *algorithms[], int numMH, double ofv,
               Prints to screen and writes a CSV file.
 *************************************************************************************/
 void EvaluateSolution(const TSol &s, const TProblemData &data,
-                      float timeBest, float timeTotal, char instance[],
-                      const std::vector<TSol> &pool)
+                      float timeBest, float timeTotal, float timeSolver,
+                      char instance[], const std::vector<TSol> &pool)
 {
     const int n_selected = (int)s.selected_idxs.size();
     if (n_selected == 0)
@@ -270,7 +270,8 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
     printf("\n--- RKO-SPECIFIC ---\n");
     printf("  %-30s %s\n",    "Best MH:",                 s.nameMH);
     printf("  %-30s %.3f s\n","Time to best:",            timeBest);
-    printf("  %-30s %.3f s\n","Total time:",              timeTotal);
+    printf("  %-30s %.3f s\n","Solver time (T_solver):",  timeSolver);
+    printf("  %-30s %.3f s\n","Total time (T_total):",    timeTotal);
     printf("  %-30s %d / %d\n","Pool diversity:",         pool_diversity, (int)pool.size());
     printf("  %-30s %d\n",    "Stereo pairs complete:",   stereo_pairs_complete);
     printf("  %-30s %d\n",    "Stereo acq selected:",     stereo_selected);
@@ -331,6 +332,7 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
 
     fprintf(csvFile, "rko,best_mh,%s\n",                     s.nameMH);
     fprintf(csvFile, "rko,time_to_best,%.3f\n",              timeBest);
+    fprintf(csvFile, "rko,solver_time,%.3f\n",               timeSolver);
     fprintf(csvFile, "rko,total_time,%.3f\n",                timeTotal);
     fprintf(csvFile, "rko,pool_diversity,%d\n",              pool_diversity);
     fprintf(csvFile, "rko,pool_size,%d\n",                   (int)pool.size());
