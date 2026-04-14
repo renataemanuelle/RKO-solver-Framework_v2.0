@@ -243,6 +243,7 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
     printf("  %-30s %d\n",    "Acquisitions selected:",   n_selected);
     printf("  %-30s %d\n",    "Unique requests served:",  served_requests);
     printf("  %-30s %.6f\n",  "Total score (scenario):",  total_score);
+    printf("  %-30s %.6f\n",  "OFV (negated score):",     s.ofv);
     printf("  %-30s %.4f\n",  "Total profit (price):",    total_profit);
     printf("  %-30s %.4f\n",  "Total area:",              total_area);
 
@@ -312,6 +313,7 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
     fprintf(csvFile, "solution,acquisitions,%d\n",           n_selected);
     fprintf(csvFile, "solution,unique_requests_served,%d\n", served_requests);
     fprintf(csvFile, "solution,total_score,%.16f\n",         total_score);
+    fprintf(csvFile, "solution,ofv,%.16f\n",                 s.ofv);
     fprintf(csvFile, "solution,total_profit,%.6f\n",         total_profit);
     fprintf(csvFile, "solution,total_area,%.6f\n",           total_area);
     fprintf(csvFile, "solution,avg_cloud_cover,%.6f\n",      avg_cloud);
