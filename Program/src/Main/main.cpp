@@ -313,6 +313,7 @@ int main(int argc, char *argv[ ])
     }
 
     EvaluateSolution(bestSolution, data, timeBest, timeTotal, timeSolver, nameInstance, pool);
+    WriteSolutionVector(bestSolution, data);
 
     // free memory with problem data
     FreeMemoryProblem(data);

@@ -228,7 +228,7 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
     printf("  EVALUATION — RKO-EOS\n");
     printf("================================================================\n");
 
-    printf("\n--- SCENARIO (instance) ---\n");
+    printf("\n--- SCENARIO (deduplicated, n=%d) ---\n", data.n);
     printf("  %-30s %d\n",    "Requests (unique IDs):",   total_requests);
     printf("  %-30s %d\n",    "Attempts (acquisitions):", data.n);
     printf("  %-30s %d\n",    "Stereo pairs (valid):",    total_stereo_pairs);
@@ -238,6 +238,16 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
     printf("  %-30s %.4f\n",  "Avg sun elevation:",       sum_sun_all   / data.n);
     printf("  %-30s %.4f\n",  "Avg cloud cover (real):",  sum_cloud_all / data.n);
     printf("  %-30s %.4f\n",  "Avg priority:",            sum_prio_all  / data.n);
+
+    printf("\n--- SCENARIO RAW (pre-dedup, n=%d) ---\n", data.n_raw);
+    printf("  %-30s %d\n",    "Requests (unique IDs):",   data.requests_raw);
+    printf("  %-30s %d\n",    "Attempts (acquisitions):", data.n_raw);
+    printf("  %-30s %.4f\n",  "Avg angle:",               data.sum_angle_raw / data.n_raw);
+    printf("  %-30s %.4f\n",  "Avg area:",                data.sum_area_raw  / data.n_raw);
+    printf("  %-30s %.4f\n",  "Avg price:",               data.sum_price_raw / data.n_raw);
+    printf("  %-30s %.4f\n",  "Avg sun elevation:",       data.sum_sun_raw   / data.n_raw);
+    printf("  %-30s %.4f\n",  "Avg cloud cover (real):",  data.sum_cloud_raw / data.n_raw);
+    printf("  %-30s %.4f\n",  "Avg priority:",            data.sum_prio_raw  / data.n_raw);
 
     printf("\n--- SOLUTION ---\n");
     printf("  %-30s %d\n",    "Acquisitions selected:",   n_selected);
@@ -311,6 +321,15 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
     fprintf(csvFile, "scenario,avg_cloud_cover,%.6f\n",      sum_cloud_all / data.n);
     fprintf(csvFile, "scenario,avg_priority,%.6f\n",         sum_prio_all  / data.n);
 
+    fprintf(csvFile, "scenario_raw,requests,%d\n",               data.requests_raw);
+    fprintf(csvFile, "scenario_raw,attempts,%d\n",               data.n_raw);
+    fprintf(csvFile, "scenario_raw,avg_angle,%.6f\n",            data.sum_angle_raw / data.n_raw);
+    fprintf(csvFile, "scenario_raw,avg_area,%.6f\n",             data.sum_area_raw  / data.n_raw);
+    fprintf(csvFile, "scenario_raw,avg_price,%.6f\n",            data.sum_price_raw / data.n_raw);
+    fprintf(csvFile, "scenario_raw,avg_sun_elevation,%.6f\n",    data.sum_sun_raw   / data.n_raw);
+    fprintf(csvFile, "scenario_raw,avg_cloud_cover,%.6f\n",      data.sum_cloud_raw / data.n_raw);
+    fprintf(csvFile, "scenario_raw,avg_priority,%.6f\n",         data.sum_prio_raw  / data.n_raw);
+
     fprintf(csvFile, "solution,acquisitions,%d\n",           n_selected);
     fprintf(csvFile, "solution,unique_requests_served,%d\n", served_requests);
     fprintf(csvFile, "solution,total_score,%.16f\n",         total_score);
@@ -342,4 +361,31 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
 
     fclose(csvFile);
     printf("[Evaluate] Metrics saved to ../Results/Evaluation_RKO.csv\n");
+}
+
+/************************************************************************************
+ Method: WriteSolutionVector
+ Description: Exports a CSV with one row per acquisition containing the binary
+              selection vector (x) and score, for cross-framework comparison.
+*************************************************************************************/
+void WriteSolutionVector(const TSol &s, const TProblemData &data)
+{
+    FILE *f = fopen("../Results/Solution_Vector_RKO.csv", "w");
+    if (!f)
+    {
+        printf("[SolutionVector] Warning: could not write Solution_Vector_RKO.csv\n");
+        return;
+    }
+
+    fprintf(f, "index,ID,satellite,time,score_scenario,selected\n");
+    for (int i = 0; i < data.n; i++)
+    {
+        const Acquisition& a = data.acquisitions[i];
+        fprintf(f, "%d,%s,%d,%s,%.16f,%d\n",
+                a.index, a.ID.c_str(), a.satellite, a.time.c_str(),
+                a.score_scenario, s.x[i]);
+    }
+
+    fclose(f);
+    printf("[SolutionVector] Exported to ../Results/Solution_Vector_RKO.csv (%d rows)\n", data.n);
 }

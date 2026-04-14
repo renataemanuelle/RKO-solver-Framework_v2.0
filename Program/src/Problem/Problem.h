@@ -37,6 +37,13 @@ struct TProblemData
     std::vector<std::pair<int, int>> stereo_pairs;
     // Mapeamento: índice de aquisição → parceiros stereo válidos
     std::map<int, std::vector<int>> stereo_partners;
+
+    // Métricas do cenário sobre dados brutos (pré-deduplicação),
+    // para comparação direta com EOSPython (que não deduplica)
+    int n_raw = 0;
+    int requests_raw = 0;
+    double sum_angle_raw = 0, sum_area_raw = 0, sum_price_raw = 0;
+    double sum_sun_raw = 0, sum_cloud_raw = 0, sum_prio_raw = 0;
 };
 
 
@@ -66,6 +73,23 @@ void ReadData(char name[], TProblemData &data)
     data.norads = instance.norads;
 
     data.acquisitions = instance.acquisitions;
+
+    // Acumular métricas do cenário sobre dados brutos (pré-deduplicação)
+    {
+        std::set<std::string> raw_ids;
+        for (const auto& a : data.acquisitions)
+        {
+            raw_ids.insert(a.ID);
+            data.sum_angle_raw += a.angle;
+            data.sum_area_raw  += a.area;
+            data.sum_price_raw += a.price;
+            data.sum_sun_raw   += a.sun_elevation;
+            data.sum_cloud_raw += a.cloud_cover_real;
+            data.sum_prio_raw  += a.priority;
+        }
+        data.n_raw = (int)data.acquisitions.size();
+        data.requests_raw = (int)raw_ids.size();
+    }
 
     // Deduplicação: remover linhas exatamente idênticas (artefato da expansão
     // stereo do LP no EOSPython — aquisições clonadas para simplificar S_constraint)
