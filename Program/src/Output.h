@@ -15,6 +15,50 @@
 #include "Data.h"
 
 /************************************************************************************
+ Helper: extract_instance_tag
+ Extracts the instance tag from the instance path.
+ Examples: ".../eoss_instance_20251121_info.txt"  -> "20251121"
+           ".../eoss_instance_1000_24h_info.txt"  -> "1000_24h"
+           ".../eoss_instance_250_8h_pf_df.csv"   -> "250_8h"
+ Falls back to filename without extension if the pattern is not found.
+*************************************************************************************/
+static std::string extract_instance_tag(const char *instance_path)
+{
+    std::string path(instance_path);
+
+    for (char &c : path)
+        if (c == '\\') c = '/';
+
+    size_t last_slash = path.rfind('/');
+    std::string filename = (last_slash != std::string::npos)
+                             ? path.substr(last_slash + 1)
+                             : path;
+
+    const std::string prefix = "eoss_instance_";
+    size_t pstart = filename.find(prefix);
+    if (pstart != std::string::npos)
+    {
+        size_t tag_start = pstart + prefix.size();
+
+        const char *suffixes[] = {"_info", "_pf_df", "_df", "_lpp_state",
+                                  "_lpp_performance_df", "_sats"};
+        for (const char *suf : suffixes)
+        {
+            size_t suf_pos = filename.find(suf, tag_start);
+            if (suf_pos != std::string::npos)
+                return filename.substr(tag_start, suf_pos - tag_start);
+        }
+
+        size_t dot = filename.rfind('.');
+        if (dot != std::string::npos && dot > tag_start)
+            return filename.substr(tag_start, dot - tag_start);
+    }
+
+    size_t dot = filename.rfind('.');
+    return (dot != std::string::npos) ? filename.substr(0, dot) : filename;
+}
+
+/************************************************************************************
  Metodo: WriteSolutionScreen
  Description: Outputs the solution to the screen using the Decoder.
 *************************************************************************************/
@@ -59,8 +103,11 @@ void WriteSolution(const char *algorithms[], int numMH, TSol s,
 				   float timeBest, float timeTotal, char instance[], 
 				   const TProblemData &data)
 {
-	char name[256]="../Results/Solutions_RKO";
-	strcat(name,".txt");
+	std::string tag = extract_instance_tag(instance);
+	std::string sol_path = "../Results/Solutions_RKO_" + tag + ".txt";
+	char name[512];
+	strncpy(name, sol_path.c_str(), sizeof(name) - 1);
+	name[sizeof(name) - 1] = '\0';
 
 	// file to write the best solution found
 	FILE *solFile;                              
@@ -110,8 +157,11 @@ void WriteResults(const char *algorithms[], int numMH, double ofv,
 				  double ofvAverage, std::vector <double> ofvs, float timeBest, 
 				  float timeTotal, char instance[])
 {
-	char name[256]="../Results/Results_RKO";
-	strcat(name,".csv");
+	std::string tag = extract_instance_tag(instance);
+	std::string res_path = "../Results/Results_RKO_" + tag + ".csv";
+	char name[512];
+	strncpy(name, res_path.c_str(), sizeof(name) - 1);
+	name[sizeof(name) - 1] = '\0';
 
 	FILE *File;
     File = fopen(name,"a");
@@ -225,7 +275,7 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
     // --- Print to screen ---
     printf("\n");
     printf("================================================================\n");
-    printf("  EVALUATION — RKO-EOS\n");
+    printf("  EVALUATION - RKO-EOS\n");
     printf("================================================================\n");
 
     printf("\n--- SCENARIO (deduplicated, n=%d) ---\n", data.n);
@@ -302,10 +352,12 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
     printf("================================================================\n\n");
 
     // --- Write CSV file ---
-    FILE *csvFile = fopen("../Results/Evaluation_RKO.csv", "w");
+    std::string tag = extract_instance_tag(instance);
+    std::string eval_path = "../Results/Evaluation_RKO_" + tag + ".csv";
+    FILE *csvFile = fopen(eval_path.c_str(), "w");
     if (!csvFile)
     {
-        printf("[Evaluate] Warning: could not write Evaluation_RKO.csv\n");
+        printf("[Evaluate] Warning: could not write %s\n", eval_path.c_str());
         return;
     }
 
@@ -360,7 +412,7 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
     fprintf(csvFile, "rko,strip_acq_selected,%d\n",          strip_selected);
 
     fclose(csvFile);
-    printf("[Evaluate] Metrics saved to ../Results/Evaluation_RKO.csv\n");
+    printf("[Evaluate] Metrics saved to %s\n", eval_path.c_str());
 }
 
 /************************************************************************************
@@ -368,12 +420,14 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
  Description: Exports a CSV with one row per acquisition containing the binary
               selection vector (x) and score, for cross-framework comparison.
 *************************************************************************************/
-void WriteSolutionVector(const TSol &s, const TProblemData &data)
+void WriteSolutionVector(const TSol &s, const TProblemData &data, char instance[])
 {
-    FILE *f = fopen("../Results/Solution_Vector_RKO.csv", "w");
+    std::string tag = extract_instance_tag(instance);
+    std::string sv_path = "../Results/Solution_Vector_RKO_" + tag + ".csv";
+    FILE *f = fopen(sv_path.c_str(), "w");
     if (!f)
     {
-        printf("[SolutionVector] Warning: could not write Solution_Vector_RKO.csv\n");
+        printf("[SolutionVector] Warning: could not write %s\n", sv_path.c_str());
         return;
     }
 
@@ -387,5 +441,5 @@ void WriteSolutionVector(const TSol &s, const TProblemData &data)
     }
 
     fclose(f);
-    printf("[SolutionVector] Exported to ../Results/Solution_Vector_RKO.csv (%d rows)\n", data.n);
+    printf("[SolutionVector] Exported to %s (%d rows)\n", sv_path.c_str(), data.n);
 }
