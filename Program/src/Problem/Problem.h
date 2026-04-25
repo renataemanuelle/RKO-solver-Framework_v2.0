@@ -132,40 +132,6 @@ void ReadData(char name[], TProblemData &data)
     std::cout << "NORAD count: " << data.norads.size() << "\n\n";
     std::cout << "Total acquisitions: " << data.n << "\n";
 
-    int to_print = std::min(3, data.n);
-
-    for (int i = 0; i < to_print; i++)
-    {
-        const Acquisition& a = data.acquisitions[i];
-
-        std::cout << "\n--- Acquisition " << i << " ---\n";
-        std::cout << "index: " << a.index << "\n";
-        std::cout << "ID: " << a.ID << "\n";
-        std::cout << "stereo: " << a.stereo << "\n";
-        std::cout << "satellite: " << a.satellite << "\n";
-        std::cout << "satellite_location: " << a.satellite_location << "\n";
-        std::cout << "request_location: " << a.request_location << "\n";
-        std::cout << "time: " << a.time << "\n";
-        std::cout << "area: " << a.area << "\n";
-        std::cout << "strips: " << a.strips << "\n";
-        std::cout << "duration: " << a.duration << "\n";
-        std::cout << "distance: " << a.distance << "\n";
-        std::cout << "angle: " << a.angle << "\n";
-        std::cout << "sun_elevation: " << a.sun_elevation << "\n";
-        std::cout << "cloud_cover_estimate: " << a.cloud_cover_estimate << "\n";
-        std::cout << "priority: " << a.priority << "\n";
-        std::cout << "priority_mod: " << a.priority_mod << "\n";
-        std::cout << "customer_type_mod: " << a.customer_type_mod << "\n";
-        std::cout << "price: " << a.price << "\n";
-        std::cout << "waiting_time: " << a.waiting_time << "\n";
-        std::cout << "uncertainty: " << a.uncertainty << "\n";
-        std::cout << "cloud_cover_real: " << a.cloud_cover_real << "\n";
-        std::cout << std::fixed << std::setprecision(16);
-        std::cout << "score_scenario: " << a.score_scenario << "\n";
-        std::cout << "score_method: " << a.score_method << "\n";
-        std::cout << "score_alpha: " << a.score_alpha << "\n";
-    }
-
     // Pré-calcular campos derivados (epoch_seconds, sat_xyz, req_xyz)
     precompute_acquisition_fields(data);
 

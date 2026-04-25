@@ -82,17 +82,6 @@ void WriteSolutionScreen(const char *algorithms[], int numMH, TSol s,
 	for (int i = 0; i< (int)pool.size(); i++)
 		printf("%.5lf [%s]\n", pool[i].ofv, pool[i].nameMH);
 
-	for (int idx_sel : s.selected_idxs)
-	{
-    	const Acquisition& a = data.acquisitions[idx_sel];
-
-    	std::cout << "index=" << a.index
-              << " | ID=" << a.ID
-              << " | sat=" << a.satellite
-              << " | time=" << a.time
-              << " | score=" << a.score_scenario
-              << "\n";
-	}	
 }
 
 /************************************************************************************
@@ -133,18 +122,6 @@ void WriteSolution(const char *algorithms[], int numMH, TSol s,
 	fprintf(solFile,"\nofv: %lf", s.ofv);
   	fprintf(solFile,"\nBest time: %.3f",timeBest);
 	fprintf(solFile,"\nTotal time:%.3f \n",timeTotal);
-
-	for (int idx_sel : s.selected_idxs)
-	{
-    	const Acquisition& a = data.acquisitions[idx_sel];
-
-    	std::cout << "index=" << a.index
-              << " | ID=" << a.ID
-              << " | sat=" << a.satellite
-              << " | time=" << a.time
-              << " | score=" << a.score_scenario
-              << "\n";
-	}	
 
 	fclose(solFile);
 }
@@ -337,18 +314,6 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
     printf("  %-30s %d\n",    "Stereo acq selected:",     stereo_selected);
     printf("  %-30s %d\n",    "Strip acq selected:",      strip_selected);
 
-    printf("\n--- SELECTED ACQUISITIONS ---\n");
-    printf("  %5s | %6s | %3s | %-19s | %8s | %8s | %8s | %6s | %6s | %4s\n",
-           "index", "ID", "sat", "time", "score", "price", "area", "angle", "cloud", "prio");
-    printf("  %s\n", std::string(103, '-').c_str());
-    for (int idx : s.selected_idxs)
-    {
-        const Acquisition& a = data.acquisitions[idx];
-        printf("  %5d | %6s | %3d | %-19s | %8.4f | %8.1f | %8.1f | %6.2f | %6.2f | %4d\n",
-               a.index, a.ID.c_str(), a.satellite, a.time.c_str(),
-               a.score_scenario, a.price, a.area, a.angle,
-               a.cloud_cover_real, a.priority);
-    }
     printf("================================================================\n\n");
 
     // --- Write CSV file ---
