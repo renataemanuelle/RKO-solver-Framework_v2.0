@@ -1,0 +1,6 @@
+Cenário de simulação
+Início: [2026, 6, 13, 9, 40]
+Horizonte: 8 horas
+NORADs usados: [38755, 40053, 38012]
+Tamanho de df: 250 linhas
+Instância: eoss_instance_250_8h_3sat
