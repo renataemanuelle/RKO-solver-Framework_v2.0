@@ -363,31 +363,33 @@ static void compute_stereo_pairs(TProblemData& data)
     }
 }
 
+// Verifica manobra com o predecessor/sucessor temporal no MESMO satélite.
+// selected_same_sat deve conter apenas índices já selecionados desse satélite,
+// ordenados por epoch_seconds (O(log S_k) via lower_bound).
 static bool can_insert_by_maneuver(
-    const std::vector<int>& selected_idxs,
+    const std::vector<int>& selected_same_sat,
     int cand_idx,
     const TProblemData& data)
 {
     const Acquisition& cand = data.acquisitions[cand_idx];
     const long long cand_time = cand.epoch_seconds;
 
-    // Busca binária pela posição temporal de inserção — O(log n)
     auto it = std::lower_bound(
-        selected_idxs.begin(), selected_idxs.end(), cand_time,
+        selected_same_sat.begin(), selected_same_sat.end(), cand_time,
         [&](int idx, long long t) {
             return data.acquisitions[idx].epoch_seconds < t;
         });
-    int pos = (int)(it - selected_idxs.begin());
+    int pos = (int)(it - selected_same_sat.begin());
 
     if (pos > 0)
     {
-        if (!maneuver_feasible(data.acquisitions[selected_idxs[pos - 1]], cand))
+        if (!maneuver_feasible(data.acquisitions[selected_same_sat[pos - 1]], cand))
             return false;
     }
 
-    if (pos < (int)selected_idxs.size())
+    if (pos < (int)selected_same_sat.size())
     {
-        if (!maneuver_feasible(cand, data.acquisitions[selected_idxs[pos]]))
+        if (!maneuver_feasible(cand, data.acquisitions[selected_same_sat[pos]]))
             return false;
     }
 
@@ -454,6 +456,8 @@ static DecodedSolution decode_solution(
     out.objective_value = 0.0;
 
     std::map<int, std::vector<Interval>> sat_intervals;
+    // Selecionados por satélite, ordenados por tempo — manobra O(log S_k)
+    std::map<int, std::vector<int>> sat_selected;
     std::map<std::string, int> id_selection_count;
 
     // Tenta inserir uma aquisição verificando todas as restrições.
@@ -473,11 +477,12 @@ static DecodedSolution decode_solution(
         if (!can_insert_interval_no_overlap(sat_intervals[acq.satellite], interval))
             return false;
 
-        if (!can_insert_by_maneuver(out.selected_idxs, idx, data))
+        if (!can_insert_by_maneuver(sat_selected[acq.satellite], idx, data))
             return false;
 
         id_selection_count[acq.ID]++;
         insert_interval_sorted(sat_intervals[acq.satellite], interval);
+        insert_sorted_by_time(sat_selected[acq.satellite], idx, data);
         insert_sorted_by_time(out.selected_idxs, idx, data);
         out.x[idx] = 1;
         out.objective_value += acq.score_scenario;
@@ -493,6 +498,10 @@ static DecodedSolution decode_solution(
 
         auto sit = std::find(out.selected_idxs.begin(), out.selected_idxs.end(), idx);
         if (sit != out.selected_idxs.end()) out.selected_idxs.erase(sit);
+
+        auto& same_sat = sat_selected[acq.satellite];
+        auto ssit = std::find(same_sat.begin(), same_sat.end(), idx);
+        if (ssit != same_sat.end()) same_sat.erase(ssit);
 
         auto& intervals = sat_intervals[acq.satellite];
         auto iit = std::find_if(intervals.begin(), intervals.end(),
