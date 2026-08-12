@@ -228,7 +228,9 @@ int main(int argc, char *argv[ ])
             solver_start_time = get_time_in_seconds();
 
             omp_set_num_threads(NUM_MH);
-            #pragma omp parallel private(rng) shared(pool, stop_execution)
+            // bestSolutionRun/end_time are shared: only ONE thread may update them
+            // after each omp for (concurrent TSol assignment is a data race / crash on Windows).
+            #pragma omp parallel private(rng) shared(pool, stop_execution, bestSolutionRun, end_time, start_time)
             {
                 while (end_time - start_time < runData.MAXTIME)
                 {
@@ -255,16 +257,17 @@ int main(int argc, char *argv[ ])
                         #pragma omp cancel for
                     }
                     
-                    // end running time
-                    end_time = get_time_in_seconds();
+                    // Single thread updates shared run state (implicit barrier at end of single)
+                    #pragma omp single
+                    {
+                        end_time = get_time_in_seconds();
 
-                    // store the best solution found
-                    if (pool[0].ofv < bestSolutionRun.ofv)
-                        bestSolutionRun = pool[0];
+                        if (pool[0].ofv < bestSolutionRun.ofv)
+                            bestSolutionRun = pool[0];
 
-                    // restart the pool of solutions in case of restart
-                    if (end_time - start_time < runData.MAXTIME)
-                        CreatePoolSolutions(data, runData.sizePool);
+                        if (end_time - start_time < runData.MAXTIME)
+                            CreatePoolSolutions(data, runData.sizePool);
+                    }
                 }
             }
             // Reset the cancellation flag

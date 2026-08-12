@@ -238,10 +238,13 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
 
     // --- Stereo pairs completeness ---
     int stereo_pairs_complete = 0;
-    for (const auto& [a, b] : data.stereo_pairs)
+    if ((int)s.x.size() == data.n)
     {
-        if (s.x[a] == 1 && s.x[b] == 1)
-            stereo_pairs_complete++;
+        for (const auto& [a, b] : data.stereo_pairs)
+        {
+            if (s.x[a] == 1 && s.x[b] == 1)
+                stereo_pairs_complete++;
+        }
     }
 
     // --- Pool diversity ---
