@@ -1,0 +1,6 @@
+Cenário de simulação
+Início: [2026, 6, 13, 9, 40]
+Horizonte: 12 horas
+NORADs usados: [38755]
+Tamanho de df: 500 linhas
+Instância: eoss_instance_500_12h_1sat
