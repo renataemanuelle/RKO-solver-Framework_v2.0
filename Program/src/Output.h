@@ -11,6 +11,8 @@
 #include <map>
 #include <iomanip>
 #include <fstream>
+#include <ctime>
+#include <cstdint>
 
 #include "Data.h"
 
@@ -381,6 +383,143 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
 
     fclose(csvFile);
     printf("[Evaluate] Metrics saved to %s\n", eval_path.c_str());
+}
+
+/************************************************************************************
+ Helper: replica_csv_next_run
+ Counts existing rows for `tag` in Evaluation_RKO_runs.csv (1-based next index).
+*************************************************************************************/
+static int replica_csv_next_run(const std::string &path, const std::string &tag)
+{
+    std::ifstream in(path);
+    if (!in)
+        return 1;
+
+    std::string line;
+    if (!std::getline(in, line))
+        return 1;
+
+    const std::string prefix = tag + ",";
+    int count = 0;
+    while (std::getline(in, line))
+    {
+        if (line.compare(0, prefix.size(), prefix) == 0)
+            count++;
+    }
+    return count + 1;
+}
+
+/************************************************************************************
+ Method: AppendReplicaRow
+ Description: Appends one replica (independent run) to Results/Evaluation_RKO_runs.csv.
+              Does not overwrite. Header is written only if the file is empty/missing.
+              Column `seed` records the RNG seed used in this invocation so later
+              sequential calls can pass an explicit seed as argv[3]:
+                  ./runTest <instance_info.txt> <MAXTIME> <seed>
+*************************************************************************************/
+void AppendReplicaRow(const TSol &s, const TProblemData &data,
+                      float timeBest, float timeTotal, float timeSolver,
+                      char instance[], const std::vector<TSol> &pool,
+                      std::uint32_t seed, int maxtime)
+{
+    const int n_selected = (int)s.selected_idxs.size();
+
+    std::set<std::string> all_ids;
+    for (int i = 0; i < data.n; i++)
+        all_ids.insert(data.acquisitions[i].ID);
+    const int total_requests = (int)all_ids.size();
+
+    std::set<std::string> served_ids;
+    double total_score = 0, total_profit = 0, total_area = 0;
+    int stereo_selected = 0, strip_selected = 0;
+    for (int idx : s.selected_idxs)
+    {
+        if (idx < 0 || idx >= data.n)
+            continue;
+        const Acquisition &a = data.acquisitions[idx];
+        served_ids.insert(a.ID);
+        total_score  += a.score_scenario;
+        total_profit += a.price;
+        total_area   += a.area;
+        if (a.stereo > 0) stereo_selected++;
+        if (a.strips >= 2) strip_selected++;
+    }
+
+    int stereo_pairs_complete = 0;
+    if ((int)s.x.size() == data.n)
+    {
+        for (const auto &[a, b] : data.stereo_pairs)
+        {
+            if (s.x[a] == 1 && s.x[b] == 1)
+                stereo_pairs_complete++;
+        }
+    }
+
+    std::set<double> unique_ofvs;
+    for (const auto &p : pool) unique_ofvs.insert(p.ofv);
+
+    std::string tag = extract_instance_tag(instance);
+    const std::string path = "../Results/Evaluation_RKO_runs.csv";
+    const int run_id = replica_csv_next_run(path, tag);
+
+    std::ifstream probe(path, std::ios::binary | std::ios::ate);
+    const bool write_header = !probe.good() || probe.tellg() <= 0;
+    probe.close();
+
+    FILE *f = fopen(path.c_str(), "a");
+    if (!f)
+    {
+        printf("[Replica] Warning: could not write %s\n", path.c_str());
+        return;
+    }
+
+    if (write_header)
+    {
+        fprintf(f, "instance,run,seed,maxtime,timestamp,n,n_raw,requests,"
+                   "score,ofv,acquisitions,unique_requests_served,"
+                   "total_profit,total_area,time_to_best,solver_time,total_time,"
+                   "best_mh,pool_diversity,pool_size,stereo_pairs_complete,"
+                   "stereo_acq_selected,strip_acq_selected\n");
+    }
+
+    char ts[32] = "";
+    std::time_t now = std::time(nullptr);
+    std::tm tm_now{};
+#if defined(_WIN32) || defined(_WIN64)
+    localtime_s(&tm_now, &now);
+#else
+    localtime_r(&now, &tm_now);
+#endif
+    std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", &tm_now);
+
+    fprintf(f, "%s,%d,%u,%d,%s,%d,%d,%d,%.16f,%.16f,%d,%d,%.6f,%.6f,%.3f,%.3f,%.3f,%s,%d,%d,%d,%d,%d\n",
+            tag.c_str(),
+            run_id,
+            seed,
+            maxtime,
+            ts,
+            data.n,
+            data.n_raw,
+            total_requests,
+            total_score,
+            s.ofv,
+            n_selected,
+            (int)served_ids.size(),
+            total_profit,
+            total_area,
+            timeBest,
+            timeSolver,
+            timeTotal,
+            s.nameMH,
+            (int)unique_ofvs.size(),
+            (int)pool.size(),
+            stereo_pairs_complete,
+            stereo_selected,
+            strip_selected);
+
+    fclose(f);
+    printf("[Replica] instance=%s run=%d seed=%u appended to %s\n",
+           tag.c_str(), run_id, seed, path.c_str());
 }
 
 /************************************************************************************

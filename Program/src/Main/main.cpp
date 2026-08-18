@@ -28,6 +28,8 @@
 #include <omp.h>
 #include <atomic>
 
+#include <cstdint>
+
 // RKO data
 #include "../Data.h" 
 
@@ -69,7 +71,21 @@ int main(int argc, char *argv[ ])
     char nameInstance[256];  
 
     strncpy(nameInstance,argv[1],255);
-    runData.MAXTIME = std::stoi(argv[2]); 
+    runData.MAXTIME = std::stoi(argv[2]);
+
+    // Optional explicit RNG seed (argv[3]). When omitted: debug uses 1234,
+    // otherwise a clock-derived seed. Recorded in Evaluation_RKO_runs.csv.
+    bool explicit_seed = (argc >= 4);
+    std::uint32_t cli_seed = 0;
+    if (explicit_seed)
+    {
+        try {
+            cli_seed = static_cast<std::uint32_t>(std::stoul(argv[3]));
+        } catch (...) {
+            printf("\nERROR: invalid seed '%s' (expected unsigned integer)\n", argv[3]);
+            exit(1);
+        }
+    } 
 
     // define the total number of metaheuristics available
     #define TOTAL_MH 11
@@ -187,17 +203,16 @@ int main(int argc, char *argv[ ])
     printf("\n\nInstance: %s \nRun: ", nameInstance);
     for (int run=0; run<runData.MAXRUNS; run++)
     {
-        // current random seed
-        int RSEED = 0;        
-
-        // obatin a seed of the clock
-        RSEED = std::chrono::steady_clock::now().time_since_epoch().count();
-
-        // set new seed
-        if (!runData.debug) rng.seed (RSEED);
-
-        // use a fixed seed in debug mode
-        if (runData.debug) rng.seed (1234);
+        // RNG seed: explicit argv[3] wins; else debug=1234; else clock.
+        std::uint32_t seed_used;
+        if (explicit_seed)
+            seed_used = cli_seed;
+        else if (runData.debug)
+            seed_used = 1234u;
+        else
+            seed_used = static_cast<std::uint32_t>(
+                std::chrono::steady_clock::now().time_since_epoch().count());
+        rng.seed(seed_used);
 
         // runs
         printf("%d ", run+1);
@@ -297,6 +312,12 @@ int main(int argc, char *argv[ ])
         timeBest += bestSolutionRun.best_time - start_time;
         timeTotal += end_time - start_time;
         timeSolver += end_time - solver_start_time;
+
+        AppendReplicaRow(bestSolutionRun, data,
+                         (float)(bestSolutionRun.best_time - start_time),
+                         (float)(end_time - start_time),
+                         (float)(end_time - solver_start_time),
+                         nameInstance, pool, seed_used, runData.MAXTIME);
     }
 
     // create a .csv file with average results
