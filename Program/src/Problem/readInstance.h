@@ -296,6 +296,9 @@ InstanceData read_eos_instance(const std::string& info_path)
     csv.close();
 
     data.n = static_cast<int>(data.acquisitions.size());
+    if (n_stereo_clipped > 0)
+        std::cout << "Stereo binarized at CSV read: " << n_stereo_clipped
+                  << " rows with stereo∉{0,1} clipped to {0,1}\n";
 
     return data;
 }
