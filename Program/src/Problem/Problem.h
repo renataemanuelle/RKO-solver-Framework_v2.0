@@ -75,6 +75,22 @@ void ReadData(char name[], TProblemData &data)
 
     data.acquisitions = instance.acquisitions;
 
+    // Garantia: stereo ∈ {0,1} mesmo se a leitura CSV for contornada
+    {
+        int n_clip = 0;
+        for (auto& a : data.acquisitions)
+        {
+            if (a.stereo != 0 && a.stereo != 1)
+            {
+                a.stereo = binarize_stereo(a.stereo);
+                n_clip++;
+            }
+        }
+        if (n_clip > 0)
+            std::cout << "Stereo binarized: " << n_clip
+                      << " rows with stereo∉{0,1} clipped to {0,1}\n";
+    }
+
     // Acumular métricas do cenário sobre dados brutos (pré-deduplicação)
     {
         std::set<std::string> raw_ids;

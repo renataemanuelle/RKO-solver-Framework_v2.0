@@ -21,6 +21,14 @@ struct DateTime {
 
 struct Vec3 { double x, y, z; };
 
+// Estéreo é binário (0 = mono, 1 = par 15°–20°). O gerador EOSPython
+// sorteia Poisson(μ=0.1) e às vezes grava 2 ou 3; isso não é um terceiro
+// tipo de requisição. Clipar na leitura: b_r = max(stereo+1, strips) fica 1 ou 2.
+inline int binarize_stereo(int raw)
+{
+    return raw > 0 ? 1 : 0;
+}
+
 struct Acquisition
 {
     int index;
@@ -239,6 +247,7 @@ InstanceData read_eos_instance(const std::string& info_path)
     std::getline(csv, line);
 
     data.acquisitions.clear();
+    int n_stereo_clipped = 0;
 
     while (std::getline(csv, line))
     {
@@ -255,7 +264,10 @@ InstanceData read_eos_instance(const std::string& info_path)
         Acquisition acq;
         acq.index = std::stoi(cols[0]);
         acq.ID = cols[1];
-        acq.stereo = std::stoi(cols[2]);
+        const int stereo_raw = std::stoi(cols[2]);
+        acq.stereo = binarize_stereo(stereo_raw);
+        if (stereo_raw != acq.stereo)
+            n_stereo_clipped++;
         acq.satellite = std::stoi(cols[3]);
         acq.satellite_location = cols[4];
         acq.request_location = cols[5];
