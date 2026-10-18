@@ -1,8 +1,5 @@
-# Framework_v2.0
-This is the second version of the RKO framework
-
-
-# RKO - Random-Key Optimizer
+# RKO - Random-Key Optimizer v2.0
+This is the second version of the RKO framework in C++.
 
 This is an implementation of the RKO to solve combinatorial optimization problems. The code was prepared for Unix and Windows systems. However, the openMP paradigm needs to be enabled.
 
@@ -18,7 +15,10 @@ Here, we have the RKO version 2.0.1 code. RKO is constantly improving based on u
 When using this algorithm in academic studies, please refer to the following work:
 
 [1] Chaves, A.A., Resende, M.G.C., Schuetz, M.J.A.,  Brubaker, J.K., Katzgraber, H.G., Arruda, E.F., Silva, R.M.A. 
-A Random-Key Optimizer for Combinatorial Optimization. This paper has been submitted to the Journal of Heuristics.
+A Random-Key Optimizer for Combinatorial Optimization. Journal of Heuristics, v. 31, n. 4, p. 32, 2025.
+
+DOI
+https://doi.org/10.1007/s10732-025-09568-z
 
 Available here in technical report form: 
 https://doi.org/10.48550/arXiv.2411.04293
@@ -32,10 +32,10 @@ This code has been designed to solve the Knapsack Problem (KP). To solve other p
 
 * Enter the Program directory: `cd Program`
 * Run the make command: `make rebuild`
-* Run the RKO: `./runTest ../Instances/KP/kp50.txt T`, where T is the maximum running time (in seconds)
-* In Windows: runTest.exe ../Instances/KP/kp50.txt T
+* Run the RKO: `./runRKO ../Instances/KP/kp50.txt T`, where T is the maximum running time (in seconds)
+* In Windows: runRKO.exe ../Instances/KP/kp50.txt T
 
-* Or compile via terminal: `g++ -std=c++20 -o runTest main.cpp -O3 -fopenmp`
+* Or compile via terminal: `g++ -std=c++20 -o runRKO main.cpp -O3 -fopenmp`
 
 
 ## Code structure
@@ -94,3 +94,9 @@ Users can choose two parameter settings: parameter tuning (option 0) and paramet
 ## OpenMP
 
 The code was implemented to run in parallel using the OpenMP directive. In this setup, #MH threads are required for each run. Each thread executes a different metaheuristic. The threads run independently, and information about the best solutions is shared through a solution pool.
+
+## Object-oriented C++
+
+An object-oriented C++ version of RKO has been recently developed by Johnny Dutra. The project was created from a fork of this repository and is available at the following link:
+
+https://github.com/dutrajy/librko

@@ -82,7 +82,7 @@ void CreateStates(std::vector<std::vector<double>> parameters, int &numStates, i
                 if (distance <= 1){
                     S[i].Ai.push_back(j);                       // define actions ai (index of the new state) from s_i
                     
-                    int q0 = randomico(0.05,0.01);
+                    double q0 = randomico(0.005,0.01);
                     S[i].Qa.push_back(q0);                      // initialize Q(si,ai)
 
                     if (q0 > S[i].maxQ)
@@ -122,7 +122,7 @@ void CreateStates(std::vector<std::vector<double>> parameters, int &numStates, i
  Method: ChooseAction()
  Description: Choose actions and update the parameters
 *************************************************************************************/
-int ChooseAction(std::vector<TState> S, int st, double epsilon)
+int ChooseAction(const std::vector<TState> &S, int st, double epsilon)
 {
     // ** choose action for current state from Q-Table using epsilon-Greedy policy
     int at;
