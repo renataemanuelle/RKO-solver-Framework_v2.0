@@ -223,7 +223,7 @@ void LNS(const TRunData &runData, const TProblemData &data)
                     improv = 0;
                 }
                 else{
-                    R = (sBest.ofv - s.ofv)/s.ofv;
+                    R = (sBest.ofv - s.ofv)/fabs(s.ofv);
                 }
 
                 // if (runData.debug) printf("\t [%.4lf, %d, %d]", R, st, at);

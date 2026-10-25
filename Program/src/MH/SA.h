@@ -184,7 +184,7 @@ void SA(const TRunData &runData, const TProblemData &data)
                     improv = 0;
                 }
                 else{
-                    R = (sBest.ofv - bestOFV)/bestOFV;
+                    R = (sBest.ofv - bestOFV)/fabs(bestOFV);
                 }
 
                 // index of the next state

@@ -249,7 +249,7 @@ void BRKGA_CS(const TRunData &runData, const TProblemData &data)
                 improv = 0;
             }    
             else{
-                R = (bestInd.ofv - bestOFV)/bestOFV;
+                R = (bestInd.ofv - bestOFV)/fabs(bestOFV);
             }
             
             // printf("\t [%.4lf, %d, %d] ", R, st, at);

@@ -289,7 +289,7 @@ void GA(const TRunData &runData, const TProblemData &data)
                 improv = 0;
             }
             else{
-                R = (bestInd.ofv - bestOFcurrent)/bestOFcurrent;
+                R = (bestInd.ofv - bestOFcurrent)/fabs(bestOFcurrent);
             }
 
             // index of the next state

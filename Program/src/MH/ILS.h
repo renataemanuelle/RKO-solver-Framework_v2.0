@@ -165,7 +165,7 @@ void ILS(const TRunData &runData, const TProblemData &data)
                 improv = 0;
             }
             else{
-                R = (sBest.ofv - sBestLine.ofv)/sBestLine.ofv;
+                R = (sBest.ofv - sBestLine.ofv)/fabs(sBestLine.ofv);
             }
 
             // if (runData.debug) printf("\t [%.4lf, %d, %d] ", R, st, at);

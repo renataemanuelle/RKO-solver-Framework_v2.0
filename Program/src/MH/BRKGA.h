@@ -291,7 +291,7 @@ void BRKGA(const TRunData &runData, const TProblemData &data)
                 improv = 0;
             }    
             else{
-                R = (bestInd.ofv - bestOff.ofv)/bestInd.ofv;
+                R = (bestInd.ofv - bestOff.ofv)/fabs(bestInd.ofv);
             }
 
             // index of the next state

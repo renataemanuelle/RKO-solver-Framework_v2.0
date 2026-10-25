@@ -295,7 +295,7 @@ void PSO(const TRunData &runData, const TProblemData &data)
                 improv = 0;
             }
             else{
-                R = (Gbest.ofv - bestOFcurrent)/bestOFcurrent;
+                R = (Gbest.ofv - bestOFcurrent)/fabs(bestOFcurrent);
             }
 
             // if (runData.debug) printf("\t [%.4lf, %d, %d] \t [%d]", R, st, at, Psize);

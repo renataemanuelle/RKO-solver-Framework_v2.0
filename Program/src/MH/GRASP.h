@@ -333,7 +333,7 @@ void GRASP(const TRunData &runData, const TProblemData &data)
                 improv = 0;
             }
             else{
-                R = (sBest.ofv - sLineBest.ofv)/sLineBest.ofv;
+                R = (sBest.ofv - sLineBest.ofv)/fabs(sLineBest.ofv);
             }
 
             // index of the next state
