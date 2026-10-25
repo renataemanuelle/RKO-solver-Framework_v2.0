@@ -336,8 +336,9 @@ int main(int argc, char *argv[ ])
         WriteSolutionScreen(algorithms, NUM_MH, bestSolution, timeBest, timeTotal, nameInstance, data, pool);
     }
 
-    EvaluateSolution(bestSolution, data, timeBest, timeTotal, timeSolver, nameInstance, pool);
-    WriteSolutionVector(bestSolution, data, nameInstance);
+    const std::string file_suffix = explicit_seed ? "_s" + std::to_string(cli_seed) : "";
+    EvaluateSolution(bestSolution, data, timeBest, timeTotal, timeSolver, nameInstance, pool, file_suffix);
+    WriteSolutionVector(bestSolution, data, nameInstance, file_suffix);
 
     // free memory with problem data
     FreeMemoryProblem(data);

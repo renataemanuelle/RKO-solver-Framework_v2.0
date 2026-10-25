@@ -13,8 +13,22 @@
 #include <fstream>
 #include <ctime>
 #include <cstdint>
+#include <filesystem>
 
 #include "Data.h"
+
+/************************************************************************************
+ Helper: results_path
+ Builds the output path inside the results folder, creating the folder if needed.
+ ../Results holds the historical campaign and must not receive new runs.
+*************************************************************************************/
+static std::string results_path(const std::string &filename)
+{
+    const std::string dir = "../Results_linux";
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    return dir + "/" + filename;
+}
 
 /************************************************************************************
  Helper: extract_instance_tag
@@ -95,7 +109,7 @@ void WriteSolution(const char *algorithms[], int numMH, TSol s,
 				   const TProblemData &data)
 {
 	std::string tag = extract_instance_tag(instance);
-	std::string sol_path = "../Results/Solutions_RKO_" + tag + ".txt";
+	std::string sol_path = results_path("Solutions_RKO_" + tag + ".txt");
 	char name[512];
 	strncpy(name, sol_path.c_str(), sizeof(name) - 1);
 	name[sizeof(name) - 1] = '\0';
@@ -137,7 +151,7 @@ void WriteResults(const char *algorithms[], int numMH, double ofv,
 				  float timeTotal, char instance[])
 {
 	std::string tag = extract_instance_tag(instance);
-	std::string res_path = "../Results/Results_RKO_" + tag + ".csv";
+	std::string res_path = results_path("Results_RKO_" + tag + ".csv");
 	char name[512];
 	strncpy(name, res_path.c_str(), sizeof(name) - 1);
 	name[sizeof(name) - 1] = '\0';
@@ -175,7 +189,8 @@ void WriteResults(const char *algorithms[], int numMH, double ofv,
 *************************************************************************************/
 void EvaluateSolution(const TSol &s, const TProblemData &data,
                       float timeBest, float timeTotal, float timeSolver,
-                      char instance[], const std::vector<TSol> &pool)
+                      char instance[], const std::vector<TSol> &pool,
+                      const std::string &file_suffix)
 {
     const int n_selected = (int)s.selected_idxs.size();
     if (n_selected == 0)
@@ -323,7 +338,7 @@ void EvaluateSolution(const TSol &s, const TProblemData &data,
 
     // --- Write CSV file ---
     std::string tag = extract_instance_tag(instance);
-    std::string eval_path = "../Results/Evaluation_RKO_" + tag + ".csv";
+    std::string eval_path = results_path("Evaluation_RKO_" + tag + file_suffix + ".csv");
     FILE *csvFile = fopen(eval_path.c_str(), "w");
     if (!csvFile)
     {
@@ -411,7 +426,7 @@ static int replica_csv_next_run(const std::string &path, const std::string &tag)
 
 /************************************************************************************
  Method: AppendReplicaRow
- Description: Appends one replica (independent run) to Results/Evaluation_RKO_runs.csv.
+ Description: Appends one replica (independent run) to Results_linux/Evaluation_RKO_runs.csv.
               Does not overwrite. Header is written only if the file is empty/missing.
               Column `seed` records the RNG seed used in this invocation so later
               sequential calls can pass an explicit seed as argv[3]:
@@ -459,7 +474,7 @@ void AppendReplicaRow(const TSol &s, const TProblemData &data,
     for (const auto &p : pool) unique_ofvs.insert(p.ofv);
 
     std::string tag = extract_instance_tag(instance);
-    const std::string path = "../Results/Evaluation_RKO_runs.csv";
+    const std::string path = results_path("Evaluation_RKO_runs.csv");
     const int run_id = replica_csv_next_run(path, tag);
 
     std::ifstream probe(path, std::ios::binary | std::ios::ate);
@@ -527,10 +542,11 @@ void AppendReplicaRow(const TSol &s, const TProblemData &data,
  Description: Exports a CSV with one row per acquisition containing the binary
               selection vector (x) and score, for cross-framework comparison.
 *************************************************************************************/
-void WriteSolutionVector(const TSol &s, const TProblemData &data, char instance[])
+void WriteSolutionVector(const TSol &s, const TProblemData &data, char instance[],
+                         const std::string &file_suffix)
 {
     std::string tag = extract_instance_tag(instance);
-    std::string sv_path = "../Results/Solution_Vector_RKO_" + tag + ".csv";
+    std::string sv_path = results_path("Solution_Vector_RKO_" + tag + file_suffix + ".csv");
     FILE *f = fopen(sv_path.c_str(), "w");
     if (!f)
     {
