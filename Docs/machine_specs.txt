@@ -1,0 +1,67 @@
+================================================================================
+  MACHINE SPECIFICATIONS — Experimental Campaign
+  RKO-solver Framework v2.0 / AEOSSP
+================================================================================
+
+Date of documentation:  2026-11-06
+Operator:               Cayo (for Renata's dissertation)
+
+--- Hardware ---
+
+Model:                  Dell G15 5520 (notebook)
+Manufacturer:           Dell Inc.
+Architecture:           x86_64
+
+CPU:                    12th Gen Intel Core i5-12500H
+  Cores:                12 (4 Performance + 8 Efficient)
+  Threads:              16 (2 threads/core on P-cores)
+  Base / Max freq:      400 MHz – 4500 MHz
+  Sockets:              1
+
+RAM:                    16 GB DDR (15 Gi usable)
+Swap:                   None configured
+
+Storage:                NVMe SSD (nvme0n1p4)
+  Total:                503 GB
+  Used:                 61 GB
+  Available:            417 GB
+
+GPU (discrete):         NVIDIA GeForce RTX 3050 Mobile (GA107BM, rev a1)
+GPU (integrated):       Intel Alder Lake-P Integrated Graphics
+
+--- Software ---
+
+Operating System:       Ubuntu 22.04.3 LTS (Jammy Jellyfish)
+Kernel:                 6.8.0-138-generic
+Hostname:               cayo-Dell-G15-5520
+
+Compiler:               g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+Build system:           GNU Make 4.3
+C++ Standard:           C++17 (filesystem support)
+
+OpenMP version:         4.5 (_OPENMP = 201511)
+  Used for:             Parallel metaheuristic execution (10 threads)
+
+--- Power configuration (during campaign) ---
+
+Lid close action:       ignore (changed from suspend)
+Idle suspend (AC):      nothing (default)
+Idle suspend (battery): nothing (changed from suspend)
+Screen lock:            disabled during campaign
+Power supply:           AC adapter (plugged in for entire campaign)
+
+--- Notes ---
+
+- The RKO framework uses OpenMP parallelism with 10 concurrent metaheuristics.
+  Each metaheuristic runs on its own thread, sharing a solution pool via
+  #pragma omp critical sections.
+
+- Thread reproducibility limitation: despite using fixed seeds per run,
+  OpenMP thread scheduling introduces non-determinism in pool access order.
+  Results may vary slightly between runs with the same seed.
+  (See dissertation discussion on parallelism and reproducibility.)
+
+- No swap partition was configured. With 16 GB RAM the AEOSSP instances
+  (up to ~6000 acquisitions) fit comfortably in memory.
+
+================================================================================
